@@ -1,0 +1,21 @@
+[package]
+name = "rain-daemon"
+version = "0.1.0"
+edition = "2021"
+description = "RAIN Host Daemon background service"
+
+[dependencies]
+rain-protocol = { path = "../../crates/rain-protocol" }
+rain-platform = { path = "../../crates/rain-platform" }
+rain-core = { path = "../../crates/rain-core" }
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
+uuid = { version = "1.0", features = ["v4"] }
+hyper = { version = "1.0", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "server"] }
+http-body-util = "0.1"
+bytes = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

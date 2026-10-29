@@ -1,0 +1,58 @@
+# Rust / Cargo
+/target/
+**/*.rs.bk
+*.pdb
+
+# Node / Web / Vite
+node_modules/
+dist/
+dist-ssr/
+*.local
+.npm/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Tauri & Mobile / Android
+**/gen/android/build/
+**/gen/android/app/build/
+**/gen/android/.gradle/
+**/gen/android/.kotlin/
+**/gen/android/.tauri/
+**/gen/android/app/src/main/jniLibs/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Playwright & Test Artifacts
+.playwright-mcp/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.token
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Logs & temp files
+*.log
+tmp/
+scratch/

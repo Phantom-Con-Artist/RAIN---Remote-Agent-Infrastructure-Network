@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "crates/rain-protocol",
+    "crates/rain-platform",
+    "crates/rain-core",
+    "services/rain-daemon",
+    "apps/rain-client/src-tauri",
+]
+resolver = "2"

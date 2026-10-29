@@ -1,0 +1,11 @@
+[package]
+name = "rain-platform"
+version = "0.1.0"
+edition = "2021"
+description = "Platform-specific capability adapters for RAIN"
+
+[dependencies]
+rain-protocol = { path = "../rain-protocol" }
+sysinfo = "0.38"
+thiserror = "2.0"
+chrono = "0.4"
