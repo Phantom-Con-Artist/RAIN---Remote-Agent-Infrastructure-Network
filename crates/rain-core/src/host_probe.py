@@ -1,4 +1,9 @@
 """Read-only discovery and explicit file operations; JSON requests over stdin."""
+import base64
+import hashlib
+import mimetypes
+import tempfile
+import uuid
 import glob
 import datetime
 import json
@@ -27,8 +32,27 @@ def run(req):
                         executables.setdefault(item.name, os.path.abspath(item.path))
             except OSError:
                 continue
-        known = {'codex': 'Codex', 'claude': 'Claude Code', 'gemini': 'Gemini CLI', 'aider': 'Aider', 'opencode': 'OpenCode', 'goose': 'Goose', 'copilot': 'Copilot CLI', 'amp': 'Amp', 'qwen': 'Qwen Code', 'cline': 'Cline', 'kiro-cli': 'Kiro CLI'}
-        return {'agents': [{'name': label, 'command': executables[name]} for name, label in known.items() if name in executables], 'executables': [{'name': name, 'command': path} for name, path in sorted(executables.items())], 'shell': shutil.which('bash') or shutil.which('sh'), 'home': os.path.expanduser('~')}
+        known = {'agy': 'Agy', 'muse': 'Muse', 'codex': 'Codex', 'claude': 'Claude Code', 'gemini': 'Gemini CLI', 'aider': 'Aider', 'opencode': 'OpenCode', 'goose': 'Goose', 'copilot': 'Copilot CLI', 'amp': 'Amp', 'qwen': 'Qwen Code', 'cline': 'Cline', 'kiro-cli': 'Kiro CLI'}
+        return {'agents': [{'name': label, 'command': executables[name], 'chat_provider': {'codex':'codex_chat','claude':'claude_chat','agy':'agy_chat','muse':'muse_chat'}.get(name)} for name, label in known.items() if name in executables], 'executables': [{'name': name, 'command': path} for name, path in sorted(executables.items())], 'shell': shutil.which('bash') or shutil.which('sh'), 'home': os.path.expanduser('~')}
+    if action == 'import':
+        encoded = req.get('content_base64', '')
+        if len(encoded) > (LIMIT + 2) // 3 * 4:
+            raise ValueError('Attachment exceeds 5 MB limit')
+        data = base64.b64decode(encoded, validate=True)
+        if len(data) > LIMIT or len(data) != req['size_bytes']:
+            raise ValueError('Attachment size mismatch or limit exceeded')
+        digest = hashlib.sha256(data).hexdigest()
+        if req.get('sha256') and req['sha256'] != digest:
+            raise ValueError('Attachment SHA-256 mismatch')
+        name = os.path.basename(req['name'].replace('\\', '/'))
+        if not name or name in ('.', '..'):
+            raise ValueError('Invalid attachment name')
+        folder = tempfile.mkdtemp(prefix='rain-inbox-')
+        destination = os.path.join(folder, name)
+        with open(destination, 'xb') as file:
+            os.chmod(destination, 0o600)
+            file.write(data)
+        return dict(path=destination, sha256=digest, size_bytes=len(data))
     path = os.path.abspath(os.path.expanduser(req.get('path') or '~'))
     if action == 'list':
         entries = []
@@ -45,6 +69,12 @@ def run(req):
                 except OSError:
                     continue
         return sorted(entries, key=lambda e: (e['name'] != '..', not e['is_dir'], e['name'].lower()))
+    if action == 'export':
+        with open(path, 'rb') as file:
+            data = file.read(LIMIT + 1)
+        if len(data) > LIMIT:
+            raise ValueError('Attachment exceeds 5 MB limit')
+        return dict(id=str(uuid.uuid4()), name=os.path.basename(path), mime_type=mimetypes.guess_type(path)[0] or 'application/octet-stream', size_bytes=len(data), preview_content=None, data_base64=base64.b64encode(data).decode('ascii'), sha256=hashlib.sha256(data).hexdigest())
     if action == 'read':
         with open(path, 'rb') as file:
             data = file.read(LIMIT + 1)

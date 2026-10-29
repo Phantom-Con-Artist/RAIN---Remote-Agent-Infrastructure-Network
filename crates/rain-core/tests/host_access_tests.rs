@@ -55,3 +55,18 @@ async fn catalog_returns_executable_paths_without_running_them() {
         assert!(std::path::Path::new(tool["command"].as_str().unwrap()).is_file());
     }
 }
+
+#[tokio::test]
+async fn file_transfer_preserves_binary_bytes_and_rejects_corruption() {
+    let source=std::env::temp_dir().join(format!("rain-transfer-{}.bin",uuid::Uuid::new_v4()));
+    let bytes=vec![0,1,254,255,0,10,13,240];std::fs::write(&source,&bytes).unwrap();
+    let exported=operate(None,json!({"action":"export","path":source})).await.unwrap();
+    let request=json!({"action":"import","name":exported["name"],"size_bytes":exported["size_bytes"],"sha256":exported["sha256"],"content_base64":exported["data_base64"]});
+    let received=operate(None,request.clone()).await.unwrap();
+    assert_eq!(received["sha256"],exported["sha256"]);
+    let destination=std::path::PathBuf::from(received["path"].as_str().unwrap());
+    assert_eq!(std::fs::read(&destination).unwrap(),bytes);
+    let mut corrupt=request;corrupt["sha256"]=json!("0".repeat(64));
+    assert!(operate(None,corrupt).await.unwrap_err().contains("SHA-256 mismatch"));
+    std::fs::remove_file(source).unwrap();std::fs::remove_dir_all(destination.parent().unwrap()).unwrap();
+}

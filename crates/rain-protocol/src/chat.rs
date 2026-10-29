@@ -39,6 +39,8 @@ pub struct ChatAttachment {
     pub mime_type: String, // e.g. "image/png", "text/plain", "application/json"
     pub size_bytes: u64,
     pub preview_content: Option<String>,
+    #[serde(default)]
+    pub sha256: Option<String>,
     pub data_base64: Option<String>, // Base64 image or file data for rendering/downloading
 }
 

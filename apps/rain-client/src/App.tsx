@@ -44,6 +44,8 @@ export const App: React.FC = () => {
   };
 
   // Navigation tab
+  const [fileDirty, setFileDirty] = useState(false);
+  const changeMachine = (machine:string) => {if(!fileDirty||window.confirm('Discard unsaved file changes before switching machines?'))setSelectedMachine(machine);};
   const [selectedMachine, setSelectedMachine] = useState('');
   const [currentTab, setCurrentTab] = useState<TabType>('chats');
 
@@ -58,6 +60,10 @@ export const App: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+
+  const activeConversationRef = useRef(activeConversationId);
+  activeConversationRef.current = activeConversationId;
+  const messagesRequest = useRef(0);
 
   // Machines state
   const [machines, setMachines] = useState<MachineOverview[]>([]);
@@ -104,18 +110,11 @@ export const App: React.FC = () => {
   }, []);
 
   const loadMessages = useCallback(async (convId: string) => {
+    const request = ++messagesRequest.current;
     try {
       const res = await apiRequest<ChatMessage[]>(`/api/v1/conversations/${convId}/messages`);
-      setMessages(prev => {
-        // Prevent unnecessary state update if identical
-        if (
-          prev.length === res.data.length &&
-          (res.data.length === 0 || prev[prev.length - 1]?.id === res.data[res.data.length - 1]?.id)
-        ) {
-          return prev;
-        }
-        return res.data;
-      });
+      if (request !== messagesRequest.current || activeConversationRef.current !== convId) return;
+      setMessages(res.data);
       setLatencyMs(res.latencyMs);
     } catch (e) {
       console.error('Failed to load messages', e);
@@ -202,8 +201,15 @@ export const App: React.FC = () => {
 
   // 4. Action Handlers
   const handleSelectConversation = (id: string) => {
+    messagesRequest.current++;
+    setMessages([]);
     setActiveConversationId(id);
     setIsMobileChatOpen(true);
+  };
+
+  const handleOpenDirect = async (id: string) => {
+    const res = await apiRequest<Conversation>('/api/v1/conversations/direct', {method:'POST', body:JSON.stringify({agent_id:id})});
+    await loadConversations(); messagesRequest.current++; setMessages([]); setActiveConversationId(res.data.id); setCurrentTab('chats'); setIsMobileChatOpen(true);
   };
 
   const handleSendMessage = async (text: string, targetAgentId: string | null, attachments: ChatAttachment[]) => {
@@ -241,6 +247,7 @@ export const App: React.FC = () => {
       showToast(`Group "${title}" created`);
     } catch (e: any) {
       showToast(`Failed to create group: ${e.message}`);
+      throw e;
     }
   };
 
@@ -402,6 +409,7 @@ export const App: React.FC = () => {
             messages={messages}
             sessions={sessions}
             onSendMessage={handleSendMessage}
+            onStartDirect={handleOpenDirect}
             onOpenNewGroup={() => setShowNewGroupModal(true)}
             onStopConversation={handleStopConversation}
             onDeleteConversation={handleDeleteConversation}
@@ -412,10 +420,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentTab === 'machines' && <div className="machines-workspace"><AgentWorkbench machine={selectedMachine} onMachineChange={setSelectedMachine} sessions={sessions} onRefresh={loadSessions} onOpenChat={async (id) => {
-          const res = await apiRequest<Conversation>('/api/v1/conversations/direct', { method: 'POST', body: JSON.stringify({agent_id: id}) });
-          await loadConversations(); setActiveConversationId(res.data.id); setCurrentTab('chats'); setIsMobileChatOpen(true);
-        }} />
+        {currentTab === 'machines' && <div className="machines-workspace"><AgentWorkbench machine={selectedMachine} onMachineChange={changeMachine} sessions={sessions} onRefresh={loadSessions} onOpenChat={handleOpenDirect} />
           <details className="host-utilities"><summary>Hub hardware & utilities</summary><MachinesView
             machines={machines}
             installedApps={installedApps}
@@ -425,9 +430,7 @@ export const App: React.FC = () => {
           /></details>
         </div>}
 
-        {currentTab === 'files' && (
-          <FilesWorkspace machine={selectedMachine} onMachineChange={setSelectedMachine} />
-        )}
+        <div hidden={currentTab!=='files'} className="file-view-wrapper"><FilesWorkspace machine={selectedMachine} onMachineChange={changeMachine} onDirtyChange={setFileDirty}/></div>
 
         {currentTab === 'mesh' && (
           <MeshView

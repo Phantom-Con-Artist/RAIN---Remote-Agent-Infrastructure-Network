@@ -73,12 +73,19 @@ impl ChatStore {
                 cwd: a.cwd,
                 subagents: vec![],
                 interactive: a.interactive,
-                state: match a.status {
-                    rain_protocol::AgentStatus::Running => rain_protocol::SessionState::Online,
-                    rain_protocol::AgentStatus::Completed => rain_protocol::SessionState::Completed,
-                    rain_protocol::AgentStatus::Terminated => rain_protocol::SessionState::Stopped,
-                    _ => rain_protocol::SessionState::Error,
-                },
+                state: a
+                    .activity
+                    .filter(|_| a.status == rain_protocol::AgentStatus::Running)
+                    .unwrap_or_else(|| match a.status {
+                        rain_protocol::AgentStatus::Running => rain_protocol::SessionState::Online,
+                        rain_protocol::AgentStatus::Completed => {
+                            rain_protocol::SessionState::Completed
+                        }
+                        rain_protocol::AgentStatus::Terminated => {
+                            rain_protocol::SessionState::Stopped
+                        }
+                        _ => rain_protocol::SessionState::Error,
+                    }),
             })
             .collect()
     }
@@ -141,6 +148,8 @@ impl ChatStore {
         mut participant_ids: Vec<String>,
     ) -> Conversation {
         let new_id = uuid::Uuid::new_v4();
+        let mut unique = std::collections::HashSet::new();
+        participant_ids.retain(|id| unique.insert(id.clone()));
         if !participant_ids.contains(&"human-user".to_string()) {
             participant_ids.insert(0, "human-user".to_string());
         }
@@ -330,7 +339,7 @@ impl ChatStore {
                     let selected: Vec<_> = agents
                         .iter()
                         .filter(|a| {
-                            (a.name == mention || a.id.to_string() == mention)
+                            (a.name.eq_ignore_ascii_case(mention) || a.id.to_string() == mention)
                                 && recipients.contains(&a.id.to_string())
                         })
                         .collect();
@@ -355,6 +364,20 @@ impl ChatStore {
                 .unwrap_or(true)
             {
                 return Err("A selected session is no longer running".into());
+            }
+        }
+        if atts.len() > 4 { return Err("A message can contain up to four files".into()); }
+        let mut delivered_files: HashMap<String, Vec<String>> = HashMap::new();
+        // Stage and verify every recipient's copy before any agent starts work.
+        for recipient in &recipients {
+            let id = uuid::Uuid::parse_str(recipient).map_err(|_| "Invalid session ID")?;
+            let agent = self.supervisor.get_agent(id).await.ok_or("Session not found")?;
+            for attachment in &atts {
+                let data = attachment.data_base64.as_ref().ok_or("Attachment has no transferable file contents")?;
+                let receipt = crate::host_access::operate(agent.machine.as_deref(), serde_json::json!({"action":"import","name":attachment.name,"size_bytes":attachment.size_bytes,"sha256":attachment.sha256,"content_base64":data})).await?;
+                let path = receipt["path"].as_str().ok_or("Host did not return an attachment path")?;
+                let hash = receipt["sha256"].as_str().ok_or("Host did not verify attachment")?;
+                delivered_files.entry(recipient.clone()).or_default().push(format!("RAIN_FILE: {}\nFilename: {}\nSHA256: {}", path, attachment.name, hash));
             }
         }
         let msg_id = uuid::Uuid::new_v4();
@@ -392,7 +415,43 @@ impl ChatStore {
 
         for recipient in recipients {
             let id = uuid::Uuid::parse_str(&recipient).map_err(|_| "Invalid session ID")?;
-            self.supervisor.send_input(id, input).await?;
+            let provider = self
+                .supervisor
+                .get_agent(id)
+                .await
+                .map(|a| a.provider)
+                .unwrap_or_default();
+            let task = if conversation.is_group && provider.ends_with("_chat") {
+                let history = self.get_messages(conv_id).await;
+                let context = history
+                    .iter()
+                    .rev()
+                    .skip(1)
+                    .take(12)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .map(|m| {
+                        format!(
+                            "{}: {}",
+                            m.sender_name,
+                            m.text.chars().take(2000).collect::<String>()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!(
+                    "RAIN group: {}\nRecent shared conversation:\n{}\n\nYour assigned message:\n{}",
+                    conversation.title, context, input
+                )
+            } else {
+                input.to_string()
+            };
+            let task = match delivered_files.get(&recipient) {
+                Some(files) => format!("{}\n\nShared files copied to your machine (read these local paths):\n{}", task, files.join("\n\n")),
+                None => task,
+            };
+            self.supervisor.send_chat_input(id, &task, conv_id).await?;
         }
         let mut human_msg = human_msg;
         human_msg.status = MessageDeliveryStatus::Delivered;
@@ -410,7 +469,14 @@ impl ChatStore {
         {
             return;
         }
-        let (id, text) = match event {
+        let system_event = matches!(&event, rain_protocol::AgentEvent::StatusChanged {..});
+        let (id, text, target) = match event {
+            rain_protocol::AgentEvent::ActivityChanged { .. } => return,
+            rain_protocol::AgentEvent::ChatReply {
+                agent_id,
+                conversation_id,
+                text,
+            } => (agent_id, text, Some(conversation_id)),
             rain_protocol::AgentEvent::Output {
                 agent_id,
                 stream,
@@ -422,6 +488,7 @@ impl ChatStore {
                 } else {
                     line
                 },
+                None,
             ),
             rain_protocol::AgentEvent::StatusChanged {
                 agent_id,
@@ -430,22 +497,22 @@ impl ChatStore {
             } => (
                 agent_id,
                 format!("Session {:?} (exit {:?})", status, exit_code),
+                None,
             ),
         };
         let agent = self.supervisor.get_agent(id).await;
         let name = agent.map(|a| a.name).unwrap_or_else(|| id.to_string());
         let mut conversations = self.conversations.write().await;
         let mut messages = self.messages.write().await;
-        for conv in conversations
-            .values_mut()
-            .filter(|c| c.participant_ids.contains(&id.to_string()))
-        {
+        for conv in conversations.values_mut().filter(|c| {
+            c.participant_ids.contains(&id.to_string()) && target.map(|t| t == c.id).unwrap_or(true)
+        }) {
             messages.entry(conv.id).or_default().push(ChatMessage {
                 id: uuid::Uuid::new_v4(),
                 conversation_id: conv.id,
                 sender_id: id.to_string(),
                 sender_name: name.clone(),
-                sender_type: SenderType::Agent,
+                sender_type: if system_event { SenderType::System } else { SenderType::Agent },
                 text: text.clone(),
                 status: MessageDeliveryStatus::Delivered,
                 attachments: vec![],
@@ -589,6 +656,7 @@ impl ChatStore {
                 size_bytes: patch_size,
                 preview_content: Some(diff_text),
                 data_base64: None,
+                sha256: None,
             }],
             requires_sudo: false,
             sudo_command: None,

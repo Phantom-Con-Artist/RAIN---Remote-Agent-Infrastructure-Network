@@ -56,10 +56,11 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
   }
 
   try {
-    const res = await fetch(url, { ...options, headers });
+    const res = await fetch(url, { ...options, headers, signal: options.signal || AbortSignal.timeout(25000) });
     const latencyMs = Math.round(performance.now() - start);
     const json = await res.json();
-    if (!json.success) {
+    if (res.status === 404 && endpoint.startsWith('/api/v1/agents/')) throw new Error('The host does not support this action or the session was removed. Refresh the page; restart the daemon if it is running an older build.');
+    if (!res.ok || !json.success) {
       throw new Error(json.error || 'Request failed');
     }
     return { data: json.data as T, latencyMs };

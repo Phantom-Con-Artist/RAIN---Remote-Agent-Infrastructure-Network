@@ -42,9 +42,9 @@ export function AgentWorkbench({ sessions, onRefresh, onOpenChat, machine, onMac
     <h2>Agent sessions</h2>
     <p>Choose a machine, then launch an agent or open a terminal.</p>
     <MachinePicker machine={machine} onChange={onMachineChange} />
-    <HostCatalog machine={machine} cwd={cwd} onLaunch={async (command,name,args) => {
-      const res = await apiRequest<{id:string}>('/api/v1/agents/start',{method:'POST',body:JSON.stringify({command,name,args,provider:'custom',interactive:true,machine:machine||null,cwd:cwd.trim()||null,env_vars:{}})});
-      onRefresh();setTerminal(res.data.id);
+    <HostCatalog machine={machine} cwd={cwd} onLaunch={async (command,name,args,provider) => {
+      const res = await apiRequest<{id:string}>('/api/v1/agents/start',{method:'POST',body:JSON.stringify({command,name,args,provider:provider||'custom',interactive:!provider,machine:machine||null,cwd:cwd.trim()||null,env_vars:{}})});
+      onRefresh();if(provider)await onOpenChat(res.data.id);else setTerminal(res.data.id);
     }} />
     <details><summary>Custom CLI launcher</summary>
     <form onSubmit={launch} className="agent-launch-form">
@@ -58,7 +58,7 @@ export function AgentWorkbench({ sessions, onRefresh, onOpenChat, machine, onMac
     {error && <p role="alert">{error}</p>}
     <div className="agent-session-list">{sessions.map(s => <div className="agent-session-row" key={s.id}>
       <div><strong>{s.name}</strong><small>{s.machine_name} · {s.cwd}</small></div><span>{s.state}</span>
-      <button className="icon-button" onClick={() => setTerminal(s.id)}>Terminal</button>
+      {s.interactive && <button className="icon-button" onClick={() => setTerminal(s.id)}>Terminal</button>}
       <button className="icon-button" onClick={() => onOpenChat(s.id).catch(e => setError(e.message))}>Open chat</button>
       {s.state === 'online' && <button className="icon-button" onClick={() => apiRequest(`/api/v1/agents/${s.id}/input`, {method:'POST', body: JSON.stringify({input:'\u0003'})}).catch(e => setError(e.message))}>Interrupt</button>}
       {s.state === 'online' ? <button className="icon-button" onClick={() => stop(s.id)}>Stop</button> : <button className="icon-button" onClick={() => remove(s.id)}>Remove</button>}

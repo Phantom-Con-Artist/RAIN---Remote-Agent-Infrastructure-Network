@@ -1,0 +1,51 @@
+.messenger-heading { display:flex;justify-content:space-between;align-items:center;padding:24px 20px 16px;gap:12px; }
+.messenger-heading h2 {font-size:24px;font-weight:600;letter-spacing:-.02em;}
+.conversation-search {display:block;margin:0 16px 8px;}
+.conversation-search input {width:100%;border:0;border-radius:4px;background:var(--bg-subtle);min-height:44px;padding:12px 16px;color:var(--text-primary);font-size:14px;}
+.roster-column {width:340px;}
+.roster-header {padding:0 16px 12px;}
+.conversation-row {text-align:left;width:100%;border-left:0;border-right:0;border-top:0;min-height:84px;background:transparent;}
+.conv-avatar-box {width:44px;height:44px;border-radius:8px;background:var(--bg-active);color:var(--text-primary);}
+.conv-preview {white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.agent-contacts {border-top:1px solid var(--border-default);padding:24px 16px;}
+.agent-contacts h3 {font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:12px;}
+.agent-contacts p {font-size:13px;line-height:1.6;color:var(--text-secondary);padding:8px 4px;}
+.agent-contact {display:flex;width:100%;text-align:left;align-items:center;gap:12px;padding:12px 4px;color:var(--text-primary);border-radius:4px;}
+.agent-contact:hover {background:var(--bg-hover);}
+.contact-avatar {display:grid;place-items:center;width:42px;height:42px;border-radius:8px;background:var(--bg-active);font-size:13px;flex-shrink:0;}
+.agent-contact strong {display:block;font-size:14px;font-weight:500;}
+.agent-contact small {display:block;font-size:12px;color:var(--text-secondary);margin-top:4px;}
+.chat-messages-scroll {padding:32px;gap:20px;}
+.message-row {max-width:min(78%,720px);}
+.message-row.system {max-width:90%;margin:0 auto;}
+.message-row.system .message-bubble {background:transparent;border:0;padding:4px 0;color:var(--text-secondary);font-size:12px;text-align:center;}
+.message-row.human {margin-left:auto;}
+.message-row.agent {margin-right:auto;}
+.message-bubble {white-space:pre-wrap;border-radius:8px;box-shadow:0 1px 2px #0001;}
+.message-row.human .message-bubble {border-bottom-right-radius:2px;}
+.message-row.agent .message-bubble {border-bottom-left-radius:2px;}
+.message-time {display:flex;gap:8px;justify-content:flex-end;font-size:11px;font-family:var(--font-sans);}
+.message-delivery {color:var(--text-secondary);}
+.message-sender {font-family:var(--font-sans);font-size:12px;font-weight:600;margin:0 0 6px;}
+.chat-input-bar {align-items:flex-end;background:var(--bg-surface);padding:16px 24px;}
+.chat-input-bar textarea {resize:none;min-height:46px;max-height:140px;line-height:1.5;}
+.typing-state {font-size:13px;color:var(--text-secondary);padding:8px 0;}
+.native-chat-notice {font-size:12px;line-height:1.6;color:var(--text-secondary);max-width:65ch;padding:12px;border:1px solid var(--border-default);border-radius:4px;}
+.messenger-empty {text-align:center;max-width:440px;padding:0 24px;}
+.messenger-empty h2 {font-size:24px;line-height:1.35;font-weight:500;margin-bottom:12px;color:var(--text-primary);}
+.messenger-empty p {font-size:14px;line-height:1.65;margin-bottom:24px;}
+@media(max-width:768px){.roster-column{width:100%;}.messenger-heading{padding:20px 16px 12px}.chat-messages-scroll{padding:20px 16px;gap:16px}.message-row{max-width:88%}.chat-input-bar{padding:12px}.messenger-empty h2{font-size:21px}}
+.file-view-wrapper { width:100%; min-width:0; min-height:0; height:100%; }
+.modal-card { max-height:calc(100dvh - 32px); overflow-y:auto; }
+.attachment-toolbar {padding:8px 24px 0;background:var(--bg-surface);border-top:1px solid var(--border-subtle);}
+.attachment-picker {display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.attachment-picker>.icon-button {border:0;min-height:32px;font-size:12px;padding:6px 8px;}
+.host-attachment-form {display:flex;flex-wrap:wrap;gap:12px;align-items:end;width:100%;padding:12px 0;}
+.host-attachment-form label {font-size:12px;display:flex;flex-direction:column;gap:6px;}
+.host-attachment-form input {min-width:0;}
+.pending-attachment {display:inline-flex;gap:12px;align-items:center;padding:8px;font-size:12px;max-width:100%;overflow-wrap:anywhere;}
+.pending-attachment button {text-decoration:underline;color:var(--text-secondary);}
+.message-attachment {display:flex;gap:12px;align-items:center;padding:12px;margin-top:12px;text-align:left;border:1px solid var(--border-strong);border-radius:4px;color:inherit;max-width:100%;background:transparent;}
+.message-attachment strong {display:block;font-size:13px;overflow-wrap:anywhere;}
+.message-attachment small {display:block;font-size:11px;color:var(--text-secondary);margin-top:4px;}
+@media(max-width:600px){.attachment-toolbar{padding:4px 12px 0}.attachment-picker>.icon-button{min-height:36px}.host-attachment-form label{width:100%}}

@@ -1,6 +1,7 @@
 // RAIN — Remote Agent Infrastructure Network Domain Types
 
 export interface ChatAttachment {
+  sha256?: string | null;
   id: string;
   name: string;
   mime_type: string;

@@ -58,11 +58,28 @@ impl AgentSupervisor {
             }
         });
 
+        let chat_mode = matches!(
+            req.provider.as_str(),
+            "codex_chat" | "claude_chat" | "agy_chat" | "muse_chat"
+        );
+        let command = if chat_mode { "python3" } else { &req.command };
+        let args = if chat_mode {
+            vec![
+                "-u".into(),
+                "-c".into(),
+                include_str!("chat_adapter.py").into(),
+                req.provider.clone(),
+                req.command.clone(),
+            ]
+        } else {
+            req.args.clone()
+        };
+        let interactive = req.interactive && !chat_mode;
         let mut cmd = if let Some(machine) = &req.machine {
             let target = crate::host_access::ssh_target(machine)?;
             let mut remote = format!("cd {} && exec ", crate::terminal::quote(&cwd));
-            remote.push_str(&crate::terminal::quote(&req.command));
-            for arg in &req.args {
+            remote.push_str(&crate::terminal::quote(command));
+            for arg in &args {
                 remote.push(' ');
                 remote.push_str(&crate::terminal::quote(arg));
             }
@@ -75,22 +92,26 @@ impl AgentSupervisor {
                 "BatchMode=yes",
                 "-o",
                 "StrictHostKeyChecking=yes",
-                if req.interactive { "-tt" } else { "-T" },
+                if interactive { "-tt" } else { "-T" },
                 "--",
                 &target,
                 &remote,
             ]);
             c
         } else {
-            let mut c = tokio::process::Command::new(&req.command);
-            c.args(&req.args).current_dir(&cwd).envs(&req.env_vars);
+            let mut c = tokio::process::Command::new(command);
+            c.args(&args).current_dir(&cwd).envs(&req.env_vars);
             c
         };
-        if req.interactive {
+        if interactive {
             cmd.env("TERM", "xterm-256color");
         }
+        #[cfg(unix)]
+        if !interactive {
+            cmd.process_group(0);
+        }
         cmd.kill_on_drop(true);
-        let terminal = if req.interactive {
+        let terminal = if interactive {
             #[cfg(unix)]
             {
                 Some(crate::terminal::configure(&mut cmd)?)
@@ -119,12 +140,12 @@ impl AgentSupervisor {
         let pid = child.id();
         let started_at = chrono::Utc::now();
 
-        let initial_process = AgentProcess {
+        let mut initial_process = AgentProcess {
             id,
             name: req.name.clone(),
             provider: req.provider.clone(),
             machine: req.machine.clone(),
-            interactive: req.interactive,
+            interactive,
             pid,
             command: req.command.clone(),
             args: req.args.clone(),
@@ -135,10 +156,16 @@ impl AgentSupervisor {
             finished_at: None,
             recent_logs: Vec::new(),
             output_sequence: 0,
+            activity: None,
         };
 
         {
             let mut lock = self.agents.write().await;
+            let base = initial_process.name.clone();
+            let mut suffix = 2;
+            while lock.values().any(|agent| agent.name.eq_ignore_ascii_case(&initial_process.name)) {
+                initial_process.name = format!("{}-{}", base, suffix); suffix += 1;
+            }
             lock.insert(id, initial_process.clone());
         }
 
@@ -219,6 +246,23 @@ impl AgentSupervisor {
                         }
                     } => {
                         let line = line_res;
+                        if chat_mode {
+                            if let Ok(event) = serde_json::from_str::<serde_json::Value>(&line) {
+                                match event.get("rain_chat").and_then(|v| v.as_str()) {
+                                    Some("reply") => {
+                                        if let (Some(conversation), Some(text)) = (event.get("conversation_id").and_then(|v| v.as_str()).and_then(|v| uuid::Uuid::parse_str(v).ok()), event.get("text").and_then(|v| v.as_str())) {
+                                            let _ = tx.send(AgentEvent::ChatReply {agent_id:id,conversation_id:conversation,text:text.into()});
+                                        }
+                                    },
+                                    Some("activity") => {
+                                        let state = if event["state"] == "working" { rain_protocol::SessionState::Working } else { rain_protocol::SessionState::Online };
+                                        if let Some(agent) = agents_ref.write().await.get_mut(&id) {agent.activity = Some(state.clone());}
+                                        let _ = tx.send(AgentEvent::ActivityChanged {agent_id:id,state});
+                                    }, _ => (),
+                                }
+                            }
+                            continue;
+                        }
                         let mut lock = agents_ref.write().await;
                         if let Some(agent) = lock.get_mut(&id) {
                             if agent.recent_logs.len() > 1000 {
@@ -303,6 +347,21 @@ impl AgentSupervisor {
         .await
     }
 
+    pub async fn send_chat_input(
+        &self,
+        id: uuid::Uuid,
+        text: &str,
+        conversation: uuid::Uuid,
+    ) -> Result<(), String> {
+        let agent = self.get_agent(id).await.ok_or("Session not found")?;
+        if agent.provider.ends_with("_chat") {
+            let frame = serde_json::json!({"text":text,"conversation_id":conversation});
+            self.send_raw(id, &format!("{}\n", frame)).await
+        } else {
+            self.send_input(id, text).await
+        }
+    }
+
     pub async fn send_raw(&self, id: uuid::Uuid, input: &str) -> Result<(), String> {
         let stdin = self
             .inputs
@@ -368,11 +427,7 @@ impl AgentSupervisor {
         #[cfg(unix)]
         {
             self.stop_requests.write().await.insert(id);
-            let target = if agent.interactive {
-                -(pid as i32)
-            } else {
-                pid as i32
-            };
+            let target = -(pid as i32);
             if unsafe { libc::kill(target, libc::SIGTERM) } != 0 {
                 self.stop_requests.write().await.remove(&id);
                 return Err(std::io::Error::last_os_error().to_string());

@@ -30,6 +30,8 @@ pub struct AgentProcess {
     pub recent_logs: Vec<String>,
     #[serde(default)]
     pub output_sequence: u64,
+    #[serde(default)]
+    pub activity: Option<crate::SessionState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +61,8 @@ pub struct AgentStopRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
+    ChatReply { agent_id: uuid::Uuid, conversation_id: uuid::Uuid, text: String },
+    ActivityChanged { agent_id: uuid::Uuid, state: crate::SessionState },
     Output {
         agent_id: uuid::Uuid,
         stream: String, // "stdout" or "stderr"

@@ -1,3 +1,4 @@
+import {useDialogFocus} from './useDialogFocus';
 import React, { useState } from 'react';
 import { FiCopy, FiCheck, FiX, FiShield, FiLink } from 'react-icons/fi';
 import { PairingTicket } from '../types';
@@ -19,6 +20,8 @@ export const PairingModal: React.FC<PairingModalProps> = ({
   onRequestOtp,
   onVerifyOtp,
 }) => {
+  const dialogRef = useDialogFocus(isOpen, onClose);
+  const [error, setError] = useState('');
   const [tab, setTab] = useState<'qr' | 'pin' | 'email'>('qr');
   const [pinInput, setPinInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
@@ -48,10 +51,13 @@ export const PairingModal: React.FC<PairingModalProps> = ({
 
   const handleClaimPin = async () => {
     if (!pinInput.trim()) return;
+    setError('');
     setIsLoading(true);
     try {
       await onConfirmPin(pinInput.trim());
       onClose();
+    } catch(e: any) {
+      setError(e.message);
     } finally {
       setIsLoading(false);
     }
@@ -59,10 +65,13 @@ export const PairingModal: React.FC<PairingModalProps> = ({
 
   const handleSendOtp = async () => {
     if (!emailInput.trim()) return;
+    setError('');
     setIsLoading(true);
     try {
       await onRequestOtp(emailInput.trim());
       setOtpSent(true);
+    } catch(e: any) {
+      setError(e.message);
     } finally {
       setIsLoading(false);
     }
@@ -70,24 +79,27 @@ export const PairingModal: React.FC<PairingModalProps> = ({
 
   const handleVerifyOtp = async () => {
     if (!otpCode.trim()) return;
+    setError('');
     setIsLoading(true);
     try {
       await onVerifyOtp(emailInput.trim(), otpCode.trim());
       onClose();
+    } catch(e: any) {
+      setError(e.message);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="modal-overlay">
+    <div ref={dialogRef} className="modal-overlay" role="dialog" aria-modal="true" aria-label="Pair a device">
       <div className="modal-card">
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <FiShield size={16} style={{ color: 'var(--accent-primary)' }} />
             <span className="modal-title">Pair Machine or Spoke Node</span>
           </div>
-          <button className="icon-button" onClick={onClose}>
+          <button className="icon-button" aria-label="Close pairing dialog" onClick={onClose}>
             <FiX size={15} />
           </button>
         </div>
@@ -118,6 +130,7 @@ export const PairingModal: React.FC<PairingModalProps> = ({
         </div>
 
         <div className="modal-body">
+          {error && <p role="alert" style={{color:'var(--danger-text)'}}>{error}</p>}
           {tab === 'qr' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
               {ticket?.qr_svg ? (
@@ -192,7 +205,7 @@ export const PairingModal: React.FC<PairingModalProps> = ({
               />
               <button
                 className="icon-button primary"
-                disabled={pinInput.length < 6 || isLoading}
+                disabled={!/^\d{6}$/.test(pinInput) || isLoading}
                 onClick={handleClaimPin}
               >
                 <span>{isLoading ? 'Verifying...' : 'Claim & Authenticate'}</span>

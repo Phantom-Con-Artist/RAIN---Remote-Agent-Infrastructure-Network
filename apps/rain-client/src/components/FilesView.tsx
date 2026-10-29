@@ -11,6 +11,7 @@ import { FileEntry } from '../types';
 import { formatBytes } from '../api';
 
 interface FilesViewProps {
+  onDirtyChange?: (dirty:boolean)=>void;
   currentPath: string;
   files: FileEntry[];
   onOpenDirectory: (path: string) => Promise<void>;
@@ -20,6 +21,7 @@ interface FilesViewProps {
 
 export const FilesView: React.FC<FilesViewProps> = ({
   currentPath,
+  onDirtyChange,
   files,
   onOpenDirectory,
   onReadFile,
@@ -28,6 +30,9 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const [editingFile, setEditingFile] = useState<{ path: string; name: string; content: string } | null>(null);
   const [pathDraft, setPathDraft] = useState(currentPath);
   useEffect(() => setPathDraft(currentPath), [currentPath]);
+  const [original, setOriginal] = useState('');
+  const dirty = !!editingFile && editingFile.content !== original;
+  useEffect(()=>{onDirtyChange?.(dirty);const warn=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue=''}};window.addEventListener('beforeunload',warn);return()=>{window.removeEventListener('beforeunload',warn);onDirtyChange?.(false)}},[dirty,onDirtyChange]);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -42,6 +47,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
         alert('Binary files cannot be edited in the browser.');
         return;
       }
+      setOriginal(res.content);
       setEditingFile({ path: entry.path, name: entry.name, content: res.content });
     }
     } catch(e: any) { setError(e.message); }
@@ -52,6 +58,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
     setIsSaving(true);
     try {
       await onWriteFile(editingFile.path, editingFile.content);
+      setOriginal(editingFile.content);
       setError('');
     } catch(e: any) { setError(e.message);
     } finally {
@@ -64,11 +71,11 @@ export const FilesView: React.FC<FilesViewProps> = ({
       <div className="files-screen" style={{ height: '100%', padding: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button className="icon-button" onClick={() => setEditingFile(null)}>
+            <button className="icon-button" onClick={() => {if(!dirty||window.confirm('Discard unsaved changes?'))setEditingFile(null)}}>
               <FiArrowLeft size={14} />
               <span>Back</span>
             </button>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{editingFile.name}</span>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{editingFile.name}{dirty?' · Unsaved':''}</span>
           </div>
 
           <button className="icon-button primary" onClick={handleSave} disabled={isSaving}>

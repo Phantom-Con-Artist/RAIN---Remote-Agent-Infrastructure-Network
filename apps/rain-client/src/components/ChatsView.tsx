@@ -1,3 +1,4 @@
+import {AttachmentPicker, downloadAttachment} from './AttachmentPicker';
 import { TerminalPanel } from './TerminalPanel';
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -23,6 +24,7 @@ interface ChatsViewProps {
   onSelectConversation: (id: string) => void;
   messages: ChatMessage[];
   sessions: AgentSession[];
+  onStartDirect: (id:string) => Promise<void>;
   onSendMessage: (text: string, targetAgentId: string | null, attachments: ChatAttachment[]) => Promise<void>;
   onOpenNewGroup: () => void;
   onStopConversation: (id: string) => Promise<void>;
@@ -40,6 +42,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
   messages,
   sessions,
   onSendMessage,
+  onStartDirect,
   onOpenNewGroup,
   onStopConversation,
   onDeleteConversation,
@@ -48,6 +51,10 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
   isMobileChatOpen,
   onCloseMobileChat,
 }) => {
+  const [pendingFiles,setPendingFiles]=useState<ChatAttachment[]>([]);
+  const [attachmentError,setAttachmentError]=useState('');
+  const [search, setSearch] = useState('');
+  const [contactError, setContactError] = useState('');
   const [terminalId, setTerminalId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'groups' | 'direct'>('all');
   const [inputText, setInputText] = useState('');
@@ -55,15 +62,17 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const pinnedToBottom = useRef(true);
 
   const activeConv = conversations.find(c => c.id === activeConversationId) || null;
 
   const interactiveMembers = sessions.filter(s => s.interactive && activeConv?.participant_ids.includes(s.id));
-  const directTerminal = activeConv && !activeConv.is_group ? interactiveMembers[0]?.id : undefined;
-  useEffect(() => setTerminalId(directTerminal || null), [activeConv?.id, directTerminal]);
+  useEffect(() => {pinnedToBottom.current=true;setTerminalId(null); setTargetSessionId('all'); setInputText('');setPendingFiles([]);setAttachmentError('');}, [activeConv?.id]);
+  const workingMembers = sessions.filter(s=>activeConv?.participant_ids.includes(s.id)&&['working','thinking','responding'].includes(s.state));
   const visibleMessages = messages.filter(m => m.sender_type === 'human' || !m.text.includes('\x1b'));
 
   const filteredConvs = conversations.filter(c => {
+    if (search && !(`${c.title} ${c.last_message||''}`).toLowerCase().includes(search.toLowerCase())) return false;
     if (filter === 'groups') return c.is_group;
     if (filter === 'direct') return !c.is_group;
     return true;
@@ -73,20 +82,20 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
-    if (isNearBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (pinnedToBottom.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block:'nearest' });
     }
   }, [messages.length]);
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const text = inputText.trim();
-    if (!text || isSubmitting || !activeConversationId) return;
+    if ((!text&&!pendingFiles.length) || isSubmitting || !activeConversationId) return;
 
     setIsSubmitting(true);
     try {
-      await onSendMessage(text, targetSessionId === 'all' ? null : targetSessionId, []);
+      await onSendMessage(text||'Shared files.', targetSessionId === 'all' ? null : targetSessionId, pendingFiles);
+      setPendingFiles([]);
       setInputText('');
     } catch {
       // Keep the draft so a failed delivery can be retried.
@@ -107,6 +116,8 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
     <div className={`chats-layout ${isMobileChatOpen ? 'mobile-chat-active' : 'mobile-roster-active'}`}>
       {/* 1. Conversations Roster Column */}
       <aside className="roster-column">
+        <div className="messenger-heading"><h2>Chats</h2><button className="icon-button" onClick={onOpenNewGroup}><FiPlus size={18}/>New group</button></div>
+        <label className="conversation-search"><span className="sr-only">Search conversations</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search chats and agents"/></label>
         <div className="roster-header">
           <div className="roster-filter-pills">
             <button
@@ -129,15 +140,12 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
             </button>
           </div>
 
-          <button className="icon-button primary" onClick={onOpenNewGroup} title="New conversation">
-            <FiPlus size={14} />
-            <span>New</span>
-          </button>
+
         </div>
 
         <div className="conversations-scroll">
           {filteredConvs.map(conv => (
-            <div
+            <button type="button"
               key={conv.id}
               className={`conversation-row ${conv.id === activeConversationId ? 'active' : ''}`}
               onClick={() => onSelectConversation(conv.id)}
@@ -152,14 +160,15 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                 </div>
                 <div className="conv-preview">{conv.last_message?.includes('\x1b') ? 'Terminal session' : conv.last_message || 'No messages yet'}</div>
               </div>
-            </div>
+            </button>
           ))}
 
           {filteredConvs.length === 0 && (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-              No conversations. Tap "+ New" to begin.
+              No matching chats. Start a conversation with an agent below.
             </div>
           )}
+          <div className="agent-contacts"><h3>Agents</h3>{sessions.filter(s=>!['stopped','completed','disconnected'].includes(s.state)&&s.name.toLowerCase().includes(search.toLowerCase())).map(s=><button type="button" className="agent-contact" key={s.id} onClick={()=>onStartDirect(s.id).catch(e=>setContactError(e.message))}><span className="contact-avatar">{s.name.slice(0,2).toUpperCase()}</span><span><strong>{s.name}</strong><small>{s.machine_name} · {s.interactive?'Terminal mode':s.state}</small></span></button>)}{!sessions.some(s=>!['stopped','completed','disconnected'].includes(s.state))&&<p>Start an agent from Machines to begin chatting.</p>}{contactError&&<p role="alert">{contactError}</p>}</div>
         </div>
       </aside>
 
@@ -212,7 +221,8 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
             </div>
 
             {/* Messages Feed */}
-            {terminalId ? <div className="chat-terminal"><TerminalPanel key={terminalId} id={terminalId}/></div> : <div className="chat-messages-scroll" ref={containerRef}>
+            {terminalId ? <div className="chat-terminal"><TerminalPanel key={terminalId} id={terminalId}/></div> : <div className="chat-messages-scroll" ref={containerRef} onScroll={e=>{const el=e.currentTarget;pinnedToBottom.current=el.scrollHeight-el.scrollTop-el.clientHeight<120}}>
+              {interactiveMembers.length>0 && <div className="native-chat-notice">{interactiveMembers.map(s=>s.name).join(', ')} uses terminal mode. Open its terminal above, or start a chat adapter from Machines for message replies.</div>}
               {visibleMessages.map(msg => (
                 <div key={msg.id} className={`message-row ${msg.sender_type}`}>
                   {msg.sender_type !== 'human' && msg.sender_type !== 'system' && (
@@ -221,6 +231,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
 
                   <div className="message-bubble">
                     {msg.text}
+                    {msg.attachments?.map(file=><button type="button" className="message-attachment" key={file.id} onClick={()=>downloadAttachment(file)} disabled={!file.data_base64}><FiPaperclip/><span><strong>{file.name}</strong><small>{(file.size_bytes/1024).toFixed(1)} KB · Download</small></span></button>)}
 
                     {/* Job Delegation & Work Unit */}
                     {msg.job_delegation && (
@@ -321,9 +332,10 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                     )}
                   </div>
 
-                  <span className="message-time">{formatTime(msg.timestamp)}</span>
+                  <span className="message-time">{formatTime(msg.timestamp)} {msg.sender_type==='human'&&<span aria-label={msg.status} className="message-delivery">{msg.status==='failed'?'Failed':msg.status==='sent'?'Sent':'Delivered'}</span>}</span>
                 </div>
               ))}
+              {workingMembers.length>0&&<div className="typing-state" role="status">{workingMembers.map(s=>s.name).join(', ')} {workingMembers.length===1?'is':'are'} working…</div>}
               <div ref={messagesEndRef} />
             </div>}
 
@@ -351,6 +363,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
               </button>
             </div>
 
+            {!terminalId&&<div className="attachment-toolbar"><AttachmentPicker disabled={!activeConv.is_active||isSubmitting||pendingFiles.length>=4} onAttach={file=>{if(pendingFiles.length>=4){setAttachmentError('Up to four files per message');return}setPendingFiles(previous=>[...previous,file]);setAttachmentError('')}}/>{pendingFiles.map(file=><div className="pending-attachment" key={file.id}><span>{file.name}</span><button type="button" aria-label={`Remove attachment ${file.name}`} onClick={()=>setPendingFiles(files=>files.filter(f=>f.id!==file.id))}>Remove</button></div>)}{attachmentError&&<p role="alert">{attachmentError}</p>}</div>}
             {/* Message Input Toolbar */}
             {!terminalId && <form className="chat-input-bar" onSubmit={handleSend}>
               <select
@@ -374,8 +387,9 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                 ))}
               </select>
 
-              <input
-                type="text"
+              <textarea
+                rows={1}
+                onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleSend();}}}
                 className="chat-input-field"
                 placeholder={activeConv.is_active ? 'Message, @session, or /command…' : 'Conversation is paused'}
                 disabled={!activeConv.is_active || isSubmitting}
@@ -386,7 +400,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
               <button
                 type="submit"
                 className="icon-button primary"
-                disabled={!activeConv.is_active || !inputText.trim() || isSubmitting}
+                disabled={!activeConv.is_active || (!inputText.trim()&&!pendingFiles.length) || isSubmitting}
                 title="Send message"
               >
                 <FiSend size={15} />
@@ -406,7 +420,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
             }}
           >
             <FiUsers size={36} />
-            <span style={{ fontSize: 14 }}>Select a conversation or create a new group.</span>
+            <div className="messenger-empty"><h2>Your agents, one conversation away</h2><p>Choose an agent to start a chat, or create a group to work with several agents together.</p><button className="icon-button primary" onClick={onOpenNewGroup}>Create a group</button></div>
           </div>
         )}
       </section>

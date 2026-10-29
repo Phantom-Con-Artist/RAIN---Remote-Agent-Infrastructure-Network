@@ -17,6 +17,17 @@ pub(super) async fn handle(
     let path = req.uri().path().to_string();
     let query = req.uri().query().map(|q| q.to_string());
 
+    if method == Method::POST && path == "/api/v1/artifacts/from-file" {
+        #[derive(serde::Deserialize)] struct Export { path: String, machine: Option<String> }
+        let bytes = req.into_body().collect().await?.to_bytes();
+        return match serde_json::from_slice::<Export>(&bytes) {
+            Ok(export) => match rain_core::host_access::operate(export.machine.as_deref(),serde_json::json!({"action":"export","path":export.path})).await {
+                Ok(data) => Ok(json_response(StatusCode::OK, &ApiResponse::ok(data))),
+                Err(e) => Ok(json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e))),
+            },
+            Err(e) => Ok(json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e.to_string()))),
+        };
+    }
     let machine = get_query_param(query.as_deref(), "machine");
     if path.starts_with("/api/v1/fs/") {
         let operation = match (method, path.as_str()) {

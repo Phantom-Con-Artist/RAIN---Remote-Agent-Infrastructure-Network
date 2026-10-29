@@ -1,3 +1,4 @@
+import {useDialogFocus} from './useDialogFocus';
 import React, { useState } from 'react';
 import { FiUsers, FiX, FiCheck } from 'react-icons/fi';
 import { AgentSession } from '../types';
@@ -15,10 +16,13 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
   sessions,
   onCreateGroup,
 }) => {
+  const dialogRef = useDialogFocus(isOpen, onClose);
+  const [error, setError] = useState('');
   const [title, setTitle] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const availableSessions = sessions.filter(s => ['online','working','thinking','waiting','responding'].includes(s.state));
   if (!isOpen) return null;
 
   const toggleSession = (id: string) => {
@@ -31,26 +35,29 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
     e.preventDefault();
     if (!title.trim() || isSubmitting) return;
 
+    setError('');
     setIsSubmitting(true);
     try {
       await onCreateGroup(title.trim(), selectedIds);
       setTitle('');
       setSelectedIds([]);
       onClose();
+    } catch(e: any) {
+      setError(e.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="modal-overlay">
+    <div ref={dialogRef} className="modal-overlay" role="dialog" aria-modal="true" aria-label="New group conversation">
       <div className="modal-card">
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <FiUsers size={16} style={{ color: 'var(--accent-primary)' }} />
             <span className="modal-title">New Group Conversation</span>
           </div>
-          <button className="icon-button" onClick={onClose}>
+          <button className="icon-button" aria-label="Close group dialog" onClick={onClose}>
             <FiX size={15} />
           </button>
         </div>
@@ -71,16 +78,18 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
               />
             </div>
 
-            {sessions.length > 0 && (
+            {availableSessions.length > 0 && (
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
                   Select Agent Participants
                 </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
-                  {sessions.map(s => {
+                  {availableSessions.map(s => {
                     const isChecked = selectedIds.includes(s.id);
                     return (
-                      <div
+                      <button
+                        type="button"
+                        aria-pressed={isChecked}
                         key={s.id}
                         onClick={() => toggleSession(s.id)}
                         style={{
@@ -96,7 +105,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
                       >
                         <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{s.name}</span>
                         {isChecked && <FiCheck size={14} style={{ color: 'var(--accent-primary)' }} />}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -104,6 +113,7 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
             )}
           </div>
 
+          {error && <p role="alert" style={{padding:'0 24px',color:'var(--danger-text)'}}>{error}</p>}
           <div className="modal-footer">
             <button type="button" className="icon-button" onClick={onClose}>
               Cancel
