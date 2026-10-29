@@ -90,6 +90,104 @@ pub(super) async fn handle(
             aliases.sort();
             Ok(json_response(StatusCode::OK, &ApiResponse::ok(aliases)))
         }
+        (Method::DELETE, path) if path.starts_with("/api/v1/agents/") => {
+            let parts: Vec<_> = path.split('/').collect();
+            let id = if parts.len() == 5 {
+                uuid::Uuid::parse_str(parts[4]).ok()
+            } else {
+                None
+            };
+            match id {
+                Some(id) => match state.chat.remove_session(id).await {
+                    Ok(()) => Ok(json_response(
+                        StatusCode::OK,
+                        &ApiResponse::ok("Session removed; chat history retained"),
+                    )),
+                    Err(e) => Ok(json_response(
+                        StatusCode::CONFLICT,
+                        &ApiResponse::<()>::err(e),
+                    )),
+                },
+                None => Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &ApiResponse::<()>::err("Invalid session ID"),
+                )),
+            }
+        }
+        (Method::GET, path) if path.starts_with("/api/v1/agents/") && path.ends_with("/output") => {
+            let id = path
+                .split('/')
+                .nth(4)
+                .and_then(|id| uuid::Uuid::parse_str(id).ok());
+            let after = super::get_query_param(req.uri().query(), "after")
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
+            match id {
+                Some(id) => match state.supervisor.get_agent(id).await {
+                    Some(agent) => {
+                        let available = agent.recent_logs.len() as u64;
+                        let sequence = agent.output_sequence.max(available);
+                        let reset = after > sequence || sequence.saturating_sub(after) > available;
+                        let count = if reset {
+                            available
+                        } else {
+                            sequence.saturating_sub(after)
+                        } as usize;
+                        let chunks = agent.recent_logs
+                            [agent.recent_logs.len().saturating_sub(count)..]
+                            .to_vec();
+                        Ok(json_response(
+                            StatusCode::OK,
+                            &ApiResponse::ok(
+                                serde_json::json!({"sequence":sequence,"chunks":chunks,"reset":reset,"interactive":agent.interactive,"status":agent.status}),
+                            ),
+                        ))
+                    }
+                    None => Ok(json_response(
+                        StatusCode::NOT_FOUND,
+                        &ApiResponse::<()>::err("Session not found"),
+                    )),
+                },
+                None => Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &ApiResponse::<()>::err("Invalid session ID"),
+                )),
+            }
+        }
+        (Method::POST, path)
+            if path.starts_with("/api/v1/agents/") && path.ends_with("/resize") =>
+        {
+            let id = path
+                .split('/')
+                .nth(4)
+                .and_then(|id| uuid::Uuid::parse_str(id).ok());
+            let bytes = req.into_body().collect().await?.to_bytes();
+            #[derive(serde::Deserialize)]
+            struct Size {
+                cols: u16,
+                rows: u16,
+            }
+            match (id, serde_json::from_slice::<Size>(&bytes)) {
+                (Some(id), Ok(size)) => match state
+                    .supervisor
+                    .resize_terminal(id, size.cols, size.rows)
+                    .await
+                {
+                    Ok(()) => Ok(json_response(
+                        StatusCode::OK,
+                        &ApiResponse::ok("Terminal resized"),
+                    )),
+                    Err(e) => Ok(json_response(
+                        StatusCode::BAD_REQUEST,
+                        &ApiResponse::<()>::err(e),
+                    )),
+                },
+                _ => Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &ApiResponse::<()>::err("Invalid terminal size"),
+                )),
+            }
+        }
         (Method::POST, path) if path.starts_with("/api/v1/agents/") && path.ends_with("/input") => {
             let id = path
                 .split('/')

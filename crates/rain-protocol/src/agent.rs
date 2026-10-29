@@ -28,6 +28,8 @@ pub struct AgentProcess {
     pub started_at: chrono::DateTime<chrono::Utc>,
     pub finished_at: Option<chrono::DateTime<chrono::Utc>>,
     pub recent_logs: Vec<String>,
+    #[serde(default)]
+    pub output_sequence: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

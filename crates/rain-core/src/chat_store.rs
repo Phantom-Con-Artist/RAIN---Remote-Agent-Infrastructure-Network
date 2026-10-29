@@ -14,12 +14,13 @@ pub struct ChatStore {
     pub(crate) conversations: Arc<RwLock<HashMap<uuid::Uuid, Conversation>>>,
     pub(crate) messages: Arc<RwLock<HashMap<uuid::Uuid, Vec<ChatMessage>>>>,
     pub(crate) persistence_lock: Arc<tokio::sync::Mutex<()>>,
-    sessions: Arc<RwLock<HashMap<String, AgentSession>>>,
     pub(crate) jobs: Arc<RwLock<HashMap<uuid::Uuid, JobDelegation>>>,
 }
 
 impl ChatStore {
-    pub fn new() -> Self { Self::with_supervisor(crate::AgentSupervisor::new()) }
+    pub fn new() -> Self {
+        Self::with_supervisor(crate::AgentSupervisor::new())
+    }
 
     pub fn with_supervisor(supervisor: crate::AgentSupervisor) -> Self {
         Self {
@@ -27,7 +28,6 @@ impl ChatStore {
             persistence_lock: Arc::new(tokio::sync::Mutex::new(())),
             conversations: Arc::new(RwLock::new(HashMap::new())),
             messages: Arc::new(RwLock::new(HashMap::new())),
-            sessions: Arc::new(RwLock::new(HashMap::new())),
             jobs: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -35,6 +35,20 @@ impl ChatStore {
     pub async fn list_conversations(&self) -> Vec<Conversation> {
         let lock = self.conversations.read().await;
         let mut list: Vec<Conversation> = lock.values().cloned().collect();
+        for conversation in &mut list {
+            if !conversation.is_group {
+                if let Some(id) = conversation
+                    .participant_ids
+                    .iter()
+                    .find(|id| id.as_str() != "human-user")
+                    .and_then(|id| uuid::Uuid::parse_str(id).ok())
+                {
+                    if let Some(agent) = self.supervisor.get_agent(id).await {
+                        conversation.title = agent.name;
+                    }
+                }
+            }
+        }
         list.sort_by(|a, b| b.last_message_time.cmp(&a.last_message_time));
         list
     }
@@ -45,16 +59,28 @@ impl ChatStore {
     }
 
     pub async fn list_sessions(&self) -> Vec<AgentSession> {
-        self.supervisor.list_agents().await.into_iter().map(|a| AgentSession {
-            id: a.id.to_string(), name: a.name, provider: a.provider,
-            machine_name: a.machine.unwrap_or_else(|| sysinfo::System::host_name().unwrap_or_default()), cwd: a.cwd,
-            subagents: vec![], state: match a.status {
-                rain_protocol::AgentStatus::Running => rain_protocol::SessionState::Online,
-                rain_protocol::AgentStatus::Completed => rain_protocol::SessionState::Completed,
-                rain_protocol::AgentStatus::Terminated => rain_protocol::SessionState::Stopped,
-                _ => rain_protocol::SessionState::Error,
-            }
-        }).collect()
+        self.supervisor
+            .list_agents()
+            .await
+            .into_iter()
+            .map(|a| AgentSession {
+                id: a.id.to_string(),
+                name: a.name,
+                provider: a.provider,
+                machine_name: a
+                    .machine
+                    .unwrap_or_else(|| sysinfo::System::host_name().unwrap_or_default()),
+                cwd: a.cwd,
+                subagents: vec![],
+                interactive: a.interactive,
+                state: match a.status {
+                    rain_protocol::AgentStatus::Running => rain_protocol::SessionState::Online,
+                    rain_protocol::AgentStatus::Completed => rain_protocol::SessionState::Completed,
+                    rain_protocol::AgentStatus::Terminated => rain_protocol::SessionState::Stopped,
+                    _ => rain_protocol::SessionState::Error,
+                },
+            })
+            .collect()
     }
 
     pub async fn list_jobs(&self) -> Vec<JobDelegation> {
@@ -71,7 +97,9 @@ impl ChatStore {
         sudo_password: Option<String>,
     ) -> Result<JobDelegation, String> {
         let mut jobs_lock = self.jobs.write().await;
-        let job = jobs_lock.get_mut(&job_id).ok_or_else(|| "Job not found".to_string())?;
+        let job = jobs_lock
+            .get_mut(&job_id)
+            .ok_or_else(|| "Job not found".to_string())?;
 
         if !approved {
             job.status = JobStatus::Failed;
@@ -85,13 +113,20 @@ impl ChatStore {
 
         let pwd_provided = sudo_password.is_some();
         let target_machine = job.target_machine.clone();
-        let cmd = job.sudo_command.clone().unwrap_or_else(|| "task".to_string());
+        let cmd = job
+            .sudo_command
+            .clone()
+            .unwrap_or_else(|| "task".to_string());
 
         job.status = JobStatus::Completed;
         job.progress_percent = 100;
         job.result_summary = Some(format!(
             "Authorized by supervisor {}. Executed `{}` on {} with exit code 0.",
-            if pwd_provided { "with credentials" } else { "with biometrics" },
+            if pwd_provided {
+                "with credentials"
+            } else {
+                "with biometrics"
+            },
             cmd,
             target_machine
         ));
@@ -132,7 +167,10 @@ impl ChatStore {
             sender_name: "RAIN System".to_string(),
             sender_type: SenderType::System,
             text: if is_group {
-                format!("Group '{}' established. Agents connected across machines.", title)
+                format!(
+                    "Group '{}' established. Agents connected across machines.",
+                    title
+                )
             } else {
                 format!("Direct session connected with {}.", title)
             },
@@ -164,9 +202,16 @@ impl ChatStore {
         let mut msg_lock = self.messages.write().await;
         let removed = msg_lock.remove(&conv_id).unwrap_or_default();
         let mut jobs = self.jobs.write().await;
-        for id in removed.iter().filter_map(|m| m.job_delegation.as_ref().map(|j| j.id)) {
+        for id in removed
+            .iter()
+            .filter_map(|m| m.job_delegation.as_ref().map(|j| j.id))
+        {
             // A workflow record shared with another conversation still belongs to that conversation.
-            if !msg_lock.values().flatten().any(|m| m.job_delegation.as_ref().map(|j| j.id) == Some(id)) {
+            if !msg_lock
+                .values()
+                .flatten()
+                .any(|m| m.job_delegation.as_ref().map(|j| j.id) == Some(id))
+            {
                 jobs.remove(&id);
             }
         }
@@ -188,7 +233,8 @@ impl ChatStore {
                 sender_id: "system".to_string(),
                 sender_name: "RAIN System".to_string(),
                 sender_type: SenderType::System,
-                text: "Group messaging paused. Agent sessions continue running independently.".to_string(),
+                text: "Group messaging paused. Agent sessions continue running independently."
+                    .to_string(),
                 status: MessageDeliveryStatus::Read,
                 attachments: vec![],
                 job_delegation: None,
@@ -210,16 +256,32 @@ impl ChatStore {
         }
         drop(conv_lock);
 
-        let agent_name = {
-            let sess_lock = self.sessions.read().await;
-            sess_lock
-                .get(agent_id)
-                .map(|s| s.name.clone())
-                .unwrap_or_else(|| agent_id.to_string())
+        let agent_name = match uuid::Uuid::parse_str(agent_id) {
+            Ok(id) => self
+                .supervisor
+                .get_agent(id)
+                .await
+                .map(|a| a.name)
+                .unwrap_or_else(|| agent_id.to_string()),
+            Err(_) => agent_id.to_string(),
         };
 
         self.create_conversation(agent_name, false, vec![agent_id.to_string()])
             .await
+    }
+
+    pub async fn remove_session(&self, id: uuid::Uuid) -> Result<(), String> {
+        let removed = self.supervisor.remove_agent(id).await?;
+        let mut conversations = self.conversations.write().await;
+        for conversation in conversations.values_mut() {
+            if !conversation.is_group && conversation.participant_ids.contains(&id.to_string()) {
+                conversation.title = removed.name.clone();
+            }
+            conversation
+                .participant_ids
+                .retain(|member| member != &id.to_string());
+        }
+        Ok(())
     }
 
     pub async fn send_human_message(
@@ -232,17 +294,32 @@ impl ChatStore {
         let atts = attachments.unwrap_or_default();
         let is_active = {
             let conv_lock = self.conversations.read().await;
-            conv_lock.get(&conv_id).map(|c| c.is_active).unwrap_or(false)
+            conv_lock
+                .get(&conv_id)
+                .map(|c| c.is_active)
+                .unwrap_or(false)
         };
 
         if !is_active {
             return Err("Cannot send messages to a stopped conversation".to_string());
         }
 
-        let conversation = self.conversations.read().await.get(&conv_id).cloned().ok_or("Conversation missing")?;
-        let mut recipients: Vec<String> = conversation.participant_ids.into_iter().filter(|id| id != "human-user").collect();
+        let conversation = self
+            .conversations
+            .read()
+            .await
+            .get(&conv_id)
+            .cloned()
+            .ok_or("Conversation missing")?;
+        let mut recipients: Vec<String> = conversation
+            .participant_ids
+            .into_iter()
+            .filter(|id| id != "human-user")
+            .collect();
         if let Some(target) = target_session {
-            if !recipients.contains(&target) { return Err("Target is not a conversation member".into()); }
+            if !recipients.contains(&target) {
+                return Err("Target is not a conversation member".into());
+            }
             recipients.retain(|id| id == &target);
         }
         let mut input = text.as_str();
@@ -250,17 +327,33 @@ impl ChatStore {
             if let Some((mention, body)) = rest.split_once(' ') {
                 if mention != "all" {
                     let agents = self.supervisor.list_agents().await;
-                    let selected: Vec<_> = agents.iter().filter(|a| (a.name == mention || a.id.to_string() == mention) && recipients.contains(&a.id.to_string())).collect();
-                    if selected.len() != 1 { return Err("Mention must uniquely identify a group member".into()); }
+                    let selected: Vec<_> = agents
+                        .iter()
+                        .filter(|a| {
+                            (a.name == mention || a.id.to_string() == mention)
+                                && recipients.contains(&a.id.to_string())
+                        })
+                        .collect();
+                    if selected.len() != 1 {
+                        return Err("Mention must uniquely identify a group member".into());
+                    }
                     recipients.retain(|id| id == &selected[0].id.to_string());
                 }
                 input = body;
             }
         }
-        if recipients.is_empty() { return Err("Add an active agent to this conversation first".into()); }
+        if recipients.is_empty() {
+            return Err("Add an active agent to this conversation first".into());
+        }
         for recipient in &recipients {
             let id = uuid::Uuid::parse_str(recipient).map_err(|_| "Invalid session ID")?;
-            if self.supervisor.get_agent(id).await.map(|a| a.status != rain_protocol::AgentStatus::Running).unwrap_or(true) {
+            if self
+                .supervisor
+                .get_agent(id)
+                .await
+                .map(|a| a.status != rain_protocol::AgentStatus::Running)
+                .unwrap_or(true)
+            {
                 return Err("A selected session is no longer running".into());
             }
         }
@@ -304,26 +397,63 @@ impl ChatStore {
         let mut human_msg = human_msg;
         human_msg.status = MessageDeliveryStatus::Delivered;
         if let Some(messages) = self.messages.write().await.get_mut(&conv_id) {
-            if let Some(message) = messages.iter_mut().find(|m| m.id == human_msg.id) { message.status = MessageDeliveryStatus::Delivered; }
+            if let Some(message) = messages.iter_mut().find(|m| m.id == human_msg.id) {
+                message.status = MessageDeliveryStatus::Delivered;
+            }
         }
         Ok(human_msg)
     }
 
     pub async fn record_event(&self, event: rain_protocol::AgentEvent) {
+        // PTY redraws are terminal state, not conversation messages.
+        if matches!(&event, rain_protocol::AgentEvent::Output { stream, .. } if stream == "terminal")
+        {
+            return;
+        }
         let (id, text) = match event {
-            rain_protocol::AgentEvent::Output { agent_id, stream, line } => (agent_id, if stream == "stderr" { format!("[stderr] {}", line) } else { line }),
-            rain_protocol::AgentEvent::StatusChanged { agent_id, status, exit_code } => (agent_id, format!("Session {:?} (exit {:?})", status, exit_code)),
+            rain_protocol::AgentEvent::Output {
+                agent_id,
+                stream,
+                line,
+            } => (
+                agent_id,
+                if stream == "stderr" {
+                    format!("[stderr] {}", line)
+                } else {
+                    line
+                },
+            ),
+            rain_protocol::AgentEvent::StatusChanged {
+                agent_id,
+                status,
+                exit_code,
+            } => (
+                agent_id,
+                format!("Session {:?} (exit {:?})", status, exit_code),
+            ),
         };
         let agent = self.supervisor.get_agent(id).await;
         let name = agent.map(|a| a.name).unwrap_or_else(|| id.to_string());
         let mut conversations = self.conversations.write().await;
         let mut messages = self.messages.write().await;
-        for conv in conversations.values_mut().filter(|c| c.participant_ids.contains(&id.to_string())) {
+        for conv in conversations
+            .values_mut()
+            .filter(|c| c.participant_ids.contains(&id.to_string()))
+        {
             messages.entry(conv.id).or_default().push(ChatMessage {
-                id: uuid::Uuid::new_v4(), conversation_id: conv.id, sender_id: id.to_string(), sender_name: name.clone(), sender_type: SenderType::Agent,
-                text: text.clone(), status: MessageDeliveryStatus::Delivered, attachments: vec![], job_delegation: None, timestamp: chrono::Utc::now(),
+                id: uuid::Uuid::new_v4(),
+                conversation_id: conv.id,
+                sender_id: id.to_string(),
+                sender_name: name.clone(),
+                sender_type: SenderType::Agent,
+                text: text.clone(),
+                status: MessageDeliveryStatus::Delivered,
+                attachments: vec![],
+                job_delegation: None,
+                timestamp: chrono::Utc::now(),
             });
-            conv.last_message = Some(text.clone()); conv.last_message_time = Some(chrono::Utc::now());
+            conv.last_message = Some(text.clone());
+            conv.last_message_time = Some(chrono::Utc::now());
         }
     }
 
@@ -348,7 +478,10 @@ impl ChatStore {
 
         if has_uncommitted {
             let changed_files_count = status_str.lines().count();
-            file_stat = format!("Staged {} modified/untracked file(s) before battery cutoff", changed_files_count);
+            file_stat = format!(
+                "Staged {} modified/untracked file(s) before battery cutoff",
+                changed_files_count
+            );
 
             let _ = Command::new("git")
                 .args(&["add", "-A"])
@@ -357,7 +490,10 @@ impl ChatStore {
                 .await;
 
             let host_name = sysinfo::System::host_name().unwrap_or_else(|| "RAIN-Node".to_string());
-            let commit_msg = format!("chore(rain): autonomous evacuation [Host: {}] [Critical Battery]", host_name);
+            let commit_msg = format!(
+                "chore(rain): autonomous evacuation [Host: {}] [Critical Battery]",
+                host_name
+            );
             let _ = Command::new("git")
                 .args(&["commit", "-m", &commit_msg])
                 .current_dir(&repo_dir)
@@ -371,8 +507,13 @@ impl ChatStore {
                 .await;
 
             push_result = match push_out {
-                Ok(p) if p.status.success() => "Pushed to GitHub origin/main successfully 🚀".to_string(),
-                Ok(p) => format!("Committed locally (push: {})", String::from_utf8_lossy(&p.stderr).trim()),
+                Ok(p) if p.status.success() => {
+                    "Pushed to GitHub origin/main successfully 🚀".to_string()
+                }
+                Ok(p) => format!(
+                    "Committed locally (push: {})",
+                    String::from_utf8_lossy(&p.stderr).trim()
+                ),
                 Err(e) => format!("Committed locally (network: {})", e),
             };
         } else {
@@ -401,7 +542,11 @@ impl ChatStore {
         {
             let raw = String::from_utf8_lossy(&diff.stdout).to_string();
             if raw.len() > 10_000 {
-                format!("{}...\n\n[Diff patch truncated for transmission: {} bytes total]", &raw[..10_000], raw.len())
+                format!(
+                    "{}...\n\n[Diff patch truncated for transmission: {} bytes total]",
+                    &raw[..10_000],
+                    raw.len()
+                )
             } else if raw.is_empty() {
                 "[Working tree clean - repository synchronized with remote]".to_string()
             } else {
@@ -505,7 +650,10 @@ impl ChatStore {
         {
             let mut conv_lock = self.conversations.write().await;
             if let Some(c) = conv_lock.get_mut(&conv_id) {
-                c.last_message = Some(format!("RAIN: Autonomous evacuation completed. Checkpoint `{}` pushed to GitHub.", commit_hash));
+                c.last_message = Some(format!(
+                    "RAIN: Autonomous evacuation completed. Checkpoint `{}` pushed to GitHub.",
+                    commit_hash
+                ));
                 c.last_message_time = Some(chrono::Utc::now());
             }
         }

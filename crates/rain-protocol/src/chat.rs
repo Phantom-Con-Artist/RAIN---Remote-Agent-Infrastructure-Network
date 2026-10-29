@@ -77,6 +77,8 @@ pub struct AgentSession {
     pub state: SessionState,
     pub cwd: String,
     pub subagents: Vec<String>,
+    #[serde(default)]
+    pub interactive: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

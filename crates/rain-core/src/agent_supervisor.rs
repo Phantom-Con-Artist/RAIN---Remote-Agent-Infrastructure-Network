@@ -1,5 +1,5 @@
 use rain_protocol::{AgentEvent, AgentLaunchRequest, AgentProcess, AgentStatus};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -10,6 +10,8 @@ pub struct AgentSupervisor {
     agents: Arc<RwLock<HashMap<uuid::Uuid, AgentProcess>>>,
     inputs:
         Arc<RwLock<HashMap<uuid::Uuid, Arc<Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>>>>>,
+    stop_requests: Arc<RwLock<HashSet<uuid::Uuid>>>,
+    terminals: Arc<RwLock<HashMap<uuid::Uuid, Arc<std::fs::File>>>>,
     event_tx: broadcast::Sender<AgentEvent>,
 }
 
@@ -19,6 +21,8 @@ impl AgentSupervisor {
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),
             event_tx,
+            stop_requests: Arc::new(RwLock::new(HashSet::new())),
+            terminals: Arc::new(RwLock::new(HashMap::new())),
             inputs: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -82,6 +86,9 @@ impl AgentSupervisor {
             c.args(&req.args).current_dir(&cwd).envs(&req.env_vars);
             c
         };
+        if req.interactive {
+            cmd.env("TERM", "xterm-256color");
+        }
         cmd.kill_on_drop(true);
         let terminal = if req.interactive {
             #[cfg(unix)]
@@ -109,35 +116,6 @@ impl AgentSupervisor {
                 .await
                 .insert(id, Arc::new(Mutex::new(Box::new(stdin))));
         }
-        if let Some((mut reader, writer)) = terminal {
-            self.inputs.write().await.insert(
-                id,
-                Arc::new(Mutex::new(Box::new(tokio::fs::File::from_std(writer)))),
-            );
-            let tx = self.event_tx.clone();
-            let agents = self.agents.clone();
-            tokio::task::spawn_blocking(move || {
-                use std::io::Read;
-                let mut buffer = [0u8; 4096];
-                while let Ok(n) = reader.read(&mut buffer) {
-                    if n == 0 {
-                        break;
-                    }
-                    let line = String::from_utf8_lossy(&buffer[..n]).to_string();
-                    if let Some(agent) = agents.blocking_write().get_mut(&id) {
-                        if agent.recent_logs.len() >= 1000 {
-                            agent.recent_logs.remove(0);
-                        }
-                        agent.recent_logs.push(line.clone());
-                    }
-                    let _ = tx.send(AgentEvent::Output {
-                        agent_id: id,
-                        stream: "terminal".into(),
-                        line,
-                    });
-                }
-            });
-        }
         let pid = child.id();
         let started_at = chrono::Utc::now();
 
@@ -156,11 +134,60 @@ impl AgentSupervisor {
             started_at,
             finished_at: None,
             recent_logs: Vec::new(),
+            output_sequence: 0,
         };
 
         {
             let mut lock = self.agents.write().await;
             lock.insert(id, initial_process.clone());
+        }
+
+        if let Some((mut reader, writer)) = terminal {
+            self.terminals
+                .write()
+                .await
+                .insert(id, Arc::new(writer.try_clone().map_err(|e| e.to_string())?));
+            self.inputs.write().await.insert(
+                id,
+                Arc::new(Mutex::new(Box::new(tokio::fs::File::from_std(writer)))),
+            );
+            let tx = self.event_tx.clone();
+            let agents = self.agents.clone();
+            tokio::task::spawn_blocking(move || {
+                use std::io::Read;
+                let mut buffer = [0u8; 4096];
+                let mut pending = Vec::new();
+                while let Ok(n) = reader.read(&mut buffer) {
+                    if n == 0 {
+                        break;
+                    }
+                    pending.extend_from_slice(&buffer[..n]);
+                    let valid = match std::str::from_utf8(&pending) {
+                        Ok(_) => pending.len(),
+                        Err(e) => e.valid_up_to(),
+                    };
+                    if valid == 0 {
+                        if pending.len() > 4096 {
+                            pending.clear();
+                        }
+                        continue;
+                    }
+                    let line = String::from_utf8_lossy(&pending[..valid]).to_string();
+                    pending.drain(..valid);
+                    if let Some(agent) = agents.blocking_write().get_mut(&id) {
+                        if agent.recent_logs.len() >= 1000 {
+                            agent.recent_logs.remove(0);
+                        }
+                        agent.recent_logs.push(line.clone());
+                        agent.output_sequence += 1;
+                    }
+                    let _ = tx.send(AgentEvent::Output {
+                        agent_id: id,
+                        stream: "terminal".into(),
+                        line,
+                    });
+                }
+            });
         }
 
         let _ = self.event_tx.send(AgentEvent::StatusChanged {
@@ -175,6 +202,8 @@ impl AgentSupervisor {
         let agents_ref = self.agents.clone();
         let tx = self.event_tx.clone();
         let inputs = self.inputs.clone();
+        let terminals = self.terminals.clone();
+        let stop_requests = self.stop_requests.clone();
 
         tokio::spawn(async move {
             let mut stdout_reader = stdout.map(|s| BufReader::new(s).lines());
@@ -195,7 +224,8 @@ impl AgentSupervisor {
                             if agent.recent_logs.len() > 1000 {
                                 agent.recent_logs.remove(0);
                             }
-                            agent.recent_logs.push(format!("[stdout] {}", line));
+                            agent.recent_logs.push(format!("[stdout] {}\r\n", line));
+                            agent.output_sequence += 1;
                         }
                         let _ = tx.send(AgentEvent::Output {
                             agent_id: id,
@@ -216,7 +246,8 @@ impl AgentSupervisor {
                             if agent.recent_logs.len() > 1000 {
                                 agent.recent_logs.remove(0);
                             }
-                            agent.recent_logs.push(format!("[stderr] {}", line));
+                            agent.recent_logs.push(format!("[stderr] {}\r\n", line));
+                            agent.output_sequence += 1;
                         }
                         let _ = tx.send(AgentEvent::Output {
                             agent_id: id,
@@ -231,10 +262,12 @@ impl AgentSupervisor {
                         };
 
                         inputs.write().await.remove(&id);
-                        let final_status = match exit_code {
+                        terminals.write().await.remove(&id);
+                        let requested = stop_requests.write().await.remove(&id);
+                        let final_status = if requested { AgentStatus::Terminated } else { match exit_code {
                             Some(0) => AgentStatus::Completed,
                             _ => AgentStatus::Failed,
-                        };
+                        }};
 
                         let mut lock = agents_ref.write().await;
                         if let Some(agent) = lock.get_mut(&id) {
@@ -258,7 +291,16 @@ impl AgentSupervisor {
     }
 
     pub async fn send_input(&self, id: uuid::Uuid, input: &str) -> Result<(), String> {
-        self.send_raw(id, &format!("{}\n", input)).await
+        let interactive = self
+            .get_agent(id)
+            .await
+            .ok_or("Session not found")?
+            .interactive;
+        self.send_raw(
+            id,
+            &format!("{}{}", input, if interactive { "\r" } else { "\n" }),
+        )
+        .await
     }
 
     pub async fn send_raw(&self, id: uuid::Uuid, input: &str) -> Result<(), String> {
@@ -277,31 +319,89 @@ impl AgentSupervisor {
         stdin.flush().await.map_err(|e| e.to_string())
     }
 
-    pub async fn stop_agent(&self, id: uuid::Uuid) -> Result<(), String> {
-        let mut lock = self.agents.write().await;
-        if let Some(agent) = lock.get_mut(&id) {
-            if agent.status != AgentStatus::Running {
-                return Err("Session is no longer running".into());
-            }
-            if let Some(pid) = agent.pid {
-                #[cfg(unix)]
-                {
-                    unsafe {
-                        libc::kill(pid as i32, libc::SIGTERM);
-                    }
-                }
-                agent.status = AgentStatus::Terminated;
-                agent.finished_at = Some(chrono::Utc::now());
-
-                let _ = self.event_tx.send(AgentEvent::StatusChanged {
-                    agent_id: id,
-                    status: AgentStatus::Terminated,
-                    exit_code: Some(143),
-                });
-                return Ok(());
-            }
+    pub async fn resize_terminal(
+        &self,
+        id: uuid::Uuid,
+        cols: u16,
+        rows: u16,
+    ) -> Result<(), String> {
+        if !(2..=500).contains(&cols) || !(1..=200).contains(&rows) {
+            return Err("Invalid terminal dimensions".into());
         }
-        Err("Agent not found or has no active PID".to_string())
+        #[cfg(unix)]
+        {
+            use std::os::fd::AsRawFd;
+            let terminals = self.terminals.read().await;
+            let file = terminals.get(&id).ok_or("Session has no active terminal")?;
+            let size = libc::winsize {
+                ws_row: rows,
+                ws_col: cols,
+                ws_xpixel: 0,
+                ws_ypixel: 0,
+            };
+            if unsafe { libc::ioctl(file.as_raw_fd(), libc::TIOCSWINSZ, &size) } < 0 {
+                return Err(std::io::Error::last_os_error().to_string());
+            }
+            Ok(())
+        }
+        #[cfg(not(unix))]
+        {
+            Err("Terminal resizing requires Unix".into())
+        }
+    }
+
+    pub async fn remove_agent(&self, id: uuid::Uuid) -> Result<AgentProcess, String> {
+        let mut agents = self.agents.write().await;
+        let agent = agents.get(&id).ok_or("Session not found")?;
+        if matches!(agent.status, AgentStatus::Starting | AgentStatus::Running) {
+            return Err("Stop this session before removing it".into());
+        }
+        agents.remove(&id).ok_or("Session not found".into())
+    }
+
+    pub async fn stop_agent(&self, id: uuid::Uuid) -> Result<(), String> {
+        let agent = self.get_agent(id).await.ok_or("Session not found")?;
+        if agent.status != AgentStatus::Running {
+            return Err("Session is no longer running".into());
+        }
+        let pid = agent.pid.ok_or("Session has no active PID")?;
+        #[cfg(unix)]
+        {
+            self.stop_requests.write().await.insert(id);
+            let target = if agent.interactive {
+                -(pid as i32)
+            } else {
+                pid as i32
+            };
+            if unsafe { libc::kill(target, libc::SIGTERM) } != 0 {
+                self.stop_requests.write().await.remove(&id);
+                return Err(std::io::Error::last_os_error().to_string());
+            }
+            tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                loop {
+                    if self
+                        .get_agent(id)
+                        .await
+                        .map(|a| a.status != AgentStatus::Running)
+                        .unwrap_or(true)
+                    {
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .map_err(|_| {
+                "Stop requested, but the process has not exited. It remains listed as running."
+                    .to_string()
+            })?;
+            Ok(())
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = pid;
+            Err("Stopping sessions currently requires a Unix host".into())
+        }
     }
 }
 

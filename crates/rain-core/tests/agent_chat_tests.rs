@@ -15,7 +15,7 @@ async fn chat_delivers_literal_commands_to_group_processes() {
     chat.send_human_message(conv.id, "@echo /help".into(), None, None).await.unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(3), async {
         loop {
-            if supervisor.get_agent(agent.id).await.unwrap().recent_logs.iter().any(|l| l == "[stdout] /help") { break; }
+            if supervisor.get_agent(agent.id).await.unwrap().recent_logs.iter().any(|l| l.trim() == "[stdout] /help") { break; }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
     }).await.unwrap();

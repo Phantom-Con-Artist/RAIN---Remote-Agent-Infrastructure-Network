@@ -99,3 +99,33 @@ fn ssh_argument_quoting_roundtrips_shell_metacharacters() {
     assert!(out.status.success());
     assert_eq!(String::from_utf8(out.stdout).unwrap(), value);
 }
+
+#[tokio::test]
+async fn removing_stopped_session_preserves_history_and_rejects_running_processes() {
+    let supervisor = AgentSupervisor::new();
+    let chat = ChatStore::with_supervisor(supervisor.clone());
+    let mut req = request(true);
+    req.args = vec!["-c".into(), "read answer".into()];
+    let agent = supervisor.start_agent(req).await.unwrap();
+    let direct = chat.get_or_create_direct_chat(&agent.id.to_string()).await;
+    assert_eq!(direct.title, "terminal");
+    assert!(chat.remove_session(agent.id).await.is_err());
+    assert!(supervisor.get_agent(agent.id).await.is_some());
+    supervisor.resize_terminal(agent.id, 80, 24).await.unwrap();
+    assert!(supervisor.resize_terminal(agent.id, 0, 24).await.is_err());
+    let before = chat.get_messages(direct.id).await;
+    chat.record_event(rain_protocol::AgentEvent::Output {
+        agent_id: agent.id,
+        stream: "terminal".into(),
+        line: "\x1b[?25lredraw".into(),
+    })
+    .await;
+    assert_eq!(chat.get_messages(direct.id).await.len(), before.len());
+    supervisor.stop_agent(agent.id).await.unwrap();
+    chat.remove_session(agent.id).await.unwrap();
+    assert!(supervisor.get_agent(agent.id).await.is_none());
+    assert!(!chat.get_messages(direct.id).await.is_empty());
+    assert!(!chat.list_conversations().await[0]
+        .participant_ids
+        .contains(&agent.id.to_string()));
+}
