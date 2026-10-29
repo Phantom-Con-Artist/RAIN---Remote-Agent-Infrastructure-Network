@@ -260,13 +260,40 @@ function formatUptime(seconds: number): string {
   return `${m}m`;
 }
 
+let toastTimer: any = null;
 function showToast(msg: string) {
   state.toastMessage = msg;
-  render();
-  setTimeout(() => {
+  let banner = document.getElementById('rain-toast-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'rain-toast-banner';
+    banner.className = 'toast-banner';
+    document.body.appendChild(banner);
+  }
+  banner.textContent = msg;
+  banner.style.display = 'block';
+
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    if (banner) banner.style.display = 'none';
     state.toastMessage = null;
-    render();
   }, 3000);
+}
+
+// Surgical UI Telemetry Updates (No layout reflow or page recreation)
+function updateNetworkTelemetryUI() {
+  const latencyBadge = document.querySelector('.mesh-latency');
+  if (latencyBadge) {
+    latencyBadge.textContent = state.connectionStatus === 'online' ? `${state.latencyMs}ms` : 'Offline';
+  }
+  const dot = document.querySelector('.status-indicator-dot');
+  if (dot) {
+    dot.className = `status-indicator-dot ${state.connectionStatus === 'online' ? 'dot-online' : 'dot-offline'}`;
+  }
+  const meshLatency = document.querySelector('.mesh-stat-value-latency');
+  if (meshLatency) {
+    meshLatency.textContent = `${state.latencyMs} ms`;
+  }
 }
 
 // API Network Client
@@ -287,9 +314,11 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Server error');
     state.connectionStatus = 'online';
+    updateNetworkTelemetryUI();
     return json.data as T;
   } catch (err: any) {
     state.connectionStatus = 'offline';
+    updateNetworkTelemetryUI();
     throw err;
   }
 }
@@ -299,7 +328,10 @@ async function loadConversations() {
   try {
     const convs = await apiRequest<Conversation[]>('/api/v1/conversations');
     state.conversations = convs;
-    if (!state.activeConversationId && convs.length > 0) {
+    if (convs.length === 0) {
+      state.activeConversationId = null;
+      state.messages = [];
+    } else if (!state.activeConversationId || !convs.some(c => c.id === state.activeConversationId)) {
       state.activeConversationId = convs[0].id;
     }
   } catch (e) {
@@ -307,14 +339,103 @@ async function loadConversations() {
   }
 }
 
-async function loadMessages(convId: string) {
+function updateConversationPreview(convId: string, msgs: ChatMessage[]) {
+  const item = document.querySelector(`.conv-item[data-conv-id="${convId}"]`);
+  if (!item || msgs.length === 0) return;
+  const last = msgs[msgs.length - 1];
+  const prev = item.querySelector('.conv-preview');
+  if (prev) {
+    prev.textContent = last.text ? (last.text.length > 50 ? last.text.slice(0, 50) + '...' : last.text) : (last.job_delegation ? 'Distributed cloud job' : 'Attachment');
+  }
+  const time = item.querySelector('.conv-time');
+  if (time && last.timestamp) {
+    time.textContent = formatTime(last.timestamp);
+  }
+}
+
+async function loadMessages(convId: string, forceRender = false) {
   try {
     const msgs = await apiRequest<ChatMessage[]>(`/api/v1/conversations/${convId}/messages`);
+    
+    // Check if nothing changed to prevent unnecessary DOM mutations
+    const isSame = !forceRender &&
+      state.activeConversationId === convId &&
+      state.messages.length === msgs.length &&
+      (msgs.length === 0 || (
+        state.messages.length > 0 &&
+        msgs[msgs.length - 1].id === state.messages[state.messages.length - 1]?.id &&
+        msgs[msgs.length - 1].status === state.messages[state.messages.length - 1]?.status &&
+        msgs[msgs.length - 1].job_delegation?.status === state.messages[state.messages.length - 1]?.job_delegation?.status &&
+        msgs[msgs.length - 1].job_delegation?.progress_percent === state.messages[state.messages.length - 1]?.job_delegation?.progress_percent
+      ));
+
+    if (isSame) {
+      return;
+    }
+
     state.messages = msgs;
-    render();
-    scrollToBottom();
+
+    const container = document.getElementById('chat-messages-container');
+    if (container && state.currentTab === 'chats' && state.activeConversationId === convId) {
+      const wasNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+      container.innerHTML = msgs.map(renderMessageBubble).join('');
+      attachJobActionHandlers();
+      if (wasNearBottom || forceRender) {
+        scrollToBottom();
+      }
+    } else if (forceRender && document.getElementById('app')) {
+      render();
+    }
+
+    updateConversationPreview(convId, msgs);
   } catch (e) {
     console.error('Failed to load messages', e);
+  }
+}
+
+function openConversation(convId: string) {
+  state.activeConversationId = convId;
+  state.isMobileChatOpen = true;
+
+  document.querySelectorAll('.conv-item').forEach(item => {
+    item.classList.toggle('conv-active', item.getAttribute('data-conv-id') === convId);
+  });
+
+  const layout = document.querySelector('.chats-screen-layout');
+  if (layout) {
+    layout.classList.remove('mobile-show-roster');
+    layout.classList.add('mobile-show-chat');
+  }
+
+  const conv = state.conversations.find(c => c.id === convId);
+  const titleEl = document.querySelector('.chat-header-title');
+  if (titleEl && conv) {
+    titleEl.textContent = conv.title;
+  }
+  const tagEl = document.querySelector('.chat-header-title-row .badge-tag');
+  if (tagEl && conv) {
+    tagEl.textContent = conv.is_group ? 'Group' : 'Direct';
+  }
+  const subEl = document.querySelector('.chat-header-sub');
+  if (subEl && conv) {
+    subEl.textContent = conv.is_group ? `● ${conv.participant_ids.length - 1} agents connected` : '● 1-on-1 Direct Agent Session';
+  }
+
+  const container = document.getElementById('chat-messages-container');
+  if (container) {
+    loadMessages(convId, true);
+  } else {
+    render();
+    loadMessages(convId, true);
+  }
+}
+
+function closeMobileChat() {
+  state.isMobileChatOpen = false;
+  const layout = document.querySelector('.chats-screen-layout');
+  if (layout) {
+    layout.classList.remove('mobile-show-chat');
+    layout.classList.add('mobile-show-roster');
   }
 }
 
@@ -327,10 +448,24 @@ async function loadSessions() {
   }
 }
 
-async function loadMachinesOverview() {
+async function loadMachinesOverview(forceRender = false) {
   try {
     const data = await apiRequest<MachineOverview[]>('/api/v1/machines/overview');
     state.machines = data;
+    if (state.currentTab === 'machines') {
+      const grid = document.querySelector('.machines-grid');
+      if (grid) {
+        grid.innerHTML = renderMachinesCards();
+        const evacBtn = document.getElementById('btn-evacuate-now-click');
+        if (evacBtn) {
+          evacBtn.addEventListener('click', () => {
+            triggerBatteryFailover();
+          });
+        }
+      } else if (forceRender) {
+        render();
+      }
+    }
   } catch (e) {
     console.error('Failed to load machines', e);
   }
@@ -485,7 +620,7 @@ async function triggerBatteryFailover() {
     if (state.activeConversationId) {
       await loadMessages(state.activeConversationId);
     }
-    showToast('✅ Battery evacuation executed to Office Mac!');
+    showToast('✅ Autonomous battery evacuation executed to Git repository!');
   } catch (e: any) {
     showToast('Failed: ' + e.message);
   }
@@ -500,12 +635,33 @@ async function respondToApproval(jobId: string, approved: boolean) {
     showToast(approved ? 'Task authorized & executed!' : 'Task rejected');
     await loadJobs();
     if (state.activeConversationId) {
-      await loadMessages(state.activeConversationId);
+      await loadMessages(state.activeConversationId, true);
     }
-    render();
   } catch (e: any) {
     showToast(`Approval failed: ${e.message}`);
   }
+}
+
+function attachJobActionHandlers() {
+  document.querySelectorAll('[data-approve-job]').forEach(btn => {
+    const newBtn = btn.cloneNode(true) as HTMLElement;
+    btn.parentNode?.replaceChild(newBtn, btn);
+    newBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const jobId = newBtn.getAttribute('data-approve-job');
+      if (jobId) respondToApproval(jobId, true);
+    });
+  });
+
+  document.querySelectorAll('[data-reject-job]').forEach(btn => {
+    const newBtn = btn.cloneNode(true) as HTMLElement;
+    btn.parentNode?.replaceChild(newBtn, btn);
+    newBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const jobId = newBtn.getAttribute('data-reject-job');
+      if (jobId) respondToApproval(jobId, false);
+    });
+  });
 }
 
 async function loadDirectory(pathStr: string) {
@@ -576,6 +732,16 @@ async function sendMessage(text: string) {
   state.pendingAttachment = null;
   state.showAttachmentMenu = false;
 
+  const textInput = document.getElementById('chat-text-input') as HTMLInputElement;
+  if (textInput) {
+    textInput.value = '';
+  }
+
+  const attPreview = document.querySelector('.attachment-preview-banner');
+  if (attPreview) {
+    attPreview.remove();
+  }
+
   try {
     await apiRequest(`/api/v1/conversations/${convId}/messages`, {
       method: 'POST',
@@ -586,9 +752,8 @@ async function sendMessage(text: string) {
       }),
     });
 
-    await loadMessages(convId);
+    await loadMessages(convId, true);
     await loadConversations();
-    render();
   } catch (e: any) {
     showToast(`Send failed: ${e.message}`);
   }
@@ -735,10 +900,10 @@ function startPolling() {
     try {
       await loadSessions();
       if (state.currentTab === 'chats' && state.activeConversationId) {
-        await loadMessages(state.activeConversationId);
+        await loadMessages(state.activeConversationId, false);
       }
       if (state.currentTab === 'machines') {
-        await loadMachinesOverview();
+        await loadMachinesOverview(false);
       }
     } catch {}
   }, 3000);
@@ -801,7 +966,7 @@ function render() {
 
     <!-- Modals & Overlays -->
     ${renderModals()}
-    ${state.toastMessage ? `<div class="toast-banner">${state.toastMessage}</div>` : ''}
+    <div id="rain-toast-banner" class="toast-banner" style="display: none;"></div>
   `;
 
   attachEventHandlers();
@@ -834,20 +999,22 @@ function renderChatsView(): string {
       <!-- Roster Column -->
       <section class="roster-panel">
         <!-- Agent Presence Stories Row -->
-        <div class="presence-stories-section">
-          <div class="stories-label">ACTIVE AGENTS (TAP FOR 1-ON-1)</div>
-          <div class="stories-scroll">
-            ${state.sessions.map(s => `
-              <div class="story-avatar-item" data-direct-agent="${s.id}">
-                <div class="avatar-ring ring-${s.state}">
-                  <span class="avatar-icon">${s.id.includes('frontend') ? '⚡' : s.id.includes('backend') ? '⚙️' : '🧠'}</span>
-                  <span class="story-dot dot-${s.state}"></span>
+        ${state.sessions.length > 0 ? `
+          <div class="presence-stories-section">
+            <div class="stories-label">ACTIVE AGENTS (TAP FOR 1-ON-1)</div>
+            <div class="stories-scroll">
+              ${state.sessions.map(s => `
+                <div class="story-avatar-item" data-direct-agent="${s.id}">
+                  <div class="avatar-ring ring-${s.state}">
+                    <span class="avatar-icon">🧠</span>
+                    <span class="story-dot dot-${s.state}"></span>
+                  </div>
+                  <span class="story-name">${s.name.split('—')[1]?.trim() || s.name.slice(0, 10)}</span>
                 </div>
-                <span class="story-name">${s.name.split('—')[1]?.trim() || s.name.slice(0, 10)}</span>
-              </div>
-            `).join('')}
+              `).join('')}
+            </div>
           </div>
-        </div>
+        ` : ''}
 
         <!-- Filter & New Group Bar -->
         <div class="roster-toolbar">
@@ -912,9 +1079,7 @@ function renderChatsView(): string {
 
           <!-- Quick Action Prompt Pills -->
           <div class="quick-prompts-bar">
-            <button class="prompt-pill prompt-pill-evac" data-prompt="⚠️ Battery at 5%: execute autonomous git failover and evacuate task to Office Desktop">🔋 5% Battery Evacuate</button>
-            <button class="prompt-pill" data-prompt="Cross-machine compile & test across Home Laptop and Office Mac">⚡ Cross-machine compile & test</button>
-            <button class="prompt-pill" data-prompt="Request sudo restart nginx on Office Mac">⚡ Sudo restart service</button>
+            <button class="prompt-pill prompt-pill-evac" data-prompt="⚠️ Battery at 5%: execute autonomous git failover and evacuate task">🔋 5% Battery Evacuate</button>
             <button class="prompt-pill" data-prompt="Check API health">⚡ Check API health</button>
             <button class="prompt-pill" data-prompt="Review git diff">⚡ Review git diff</button>
           </div>
@@ -1073,6 +1238,77 @@ function renderMessageBubble(msg: ChatMessage): string {
   `;
 }
 
+function renderMachinesCards(): string {
+  return state.machines.map(m => {
+    const memUsed = formatBytes(m.memory_used_bytes);
+    const memTotal = formatBytes(m.memory_total_bytes);
+    const diskUsed = formatBytes(m.disk_used_bytes);
+    const diskTotal = formatBytes(m.disk_total_bytes);
+    const memPercent = Math.round((m.memory_used_bytes / (m.memory_total_bytes || 1)) * 100);
+
+    return `
+      <div class="machine-card">
+        <div class="machine-card-header">
+          <div class="machine-identity">
+            <span class="platform-icon">${m.platform === 'linux' ? '🐧' : m.platform === 'macos' ? '🍎' : '💻'}</span>
+            <div>
+              <h3 class="machine-name">${m.name}</h3>
+              <span class="machine-ip">${m.ip_address}</span>
+            </div>
+          </div>
+          <span class="badge-online">ONLINE</span>
+        </div>
+
+        <!-- Hardware Telemetry Gauges -->
+        <div class="telemetry-box">
+          <div class="gauge-row">
+            <span class="gauge-label">CPU (${m.cpu_usage.toFixed(1)}%)</span>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill fill-cpu" style="width: ${Math.min(100, Math.max(5, m.cpu_usage))}%"></div>
+            </div>
+          </div>
+          <div class="gauge-row">
+            <span class="gauge-label">RAM (${memPercent}%)</span>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill fill-ram" style="width: ${memPercent}%"></div>
+            </div>
+            <span class="gauge-sub">${memUsed} / ${memTotal}</span>
+          </div>
+          <div class="gauge-row">
+            <span class="gauge-label">DISK STORAGE</span>
+            <span class="gauge-sub">${diskUsed} / ${diskTotal}</span>
+          </div>
+
+          ${m.battery ? `
+            <div class="gauge-row battery-gauge-row">
+              <div class="battery-head-row">
+                <span class="gauge-label">POWER SUPPLY</span>
+                <span class="battery-pill-badge ${m.battery.is_critical ? 'badge-critical-power' : m.battery.is_ac_connected ? 'badge-ac-power' : 'badge-battery-power'}">
+                  ${m.battery.is_critical ? '⚠️ 5% CRITICAL (DISCHARGING)' : m.battery.is_ac_connected ? `⚡ ${m.battery.percent}% (${m.battery.power_source})` : `🔋 ${m.battery.percent}% (${m.battery.power_source})`}
+                </span>
+              </div>
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill ${m.battery.is_critical ? 'fill-battery-critical' : 'fill-battery'}" style="width: ${m.battery.percent}%"></div>
+              </div>
+              ${m.battery.is_critical ? `
+                <div class="battery-failover-action-bar">
+                  <span class="time-left-notice">⏱️ ~${m.battery.time_remaining_minutes || 8} min before shutdown</span>
+                  <button class="btn-evacuate-now" id="btn-evacuate-now-click">⚡ Evacuate Task to Git Remote</button>
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="machine-card-footer">
+          <span>⏱️ Uptime: ${formatUptime(m.uptime_seconds)}</span>
+          <span>🤖 ${m.active_agents_count} agents</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 // 2. MACHINES TAB
 function renderMachinesView(): string {
   return `
@@ -1084,74 +1320,7 @@ function renderMachinesView(): string {
 
       <!-- Active Machines Cards Grid -->
       <div class="machines-grid">
-        ${state.machines.map(m => {
-          const memUsed = formatBytes(m.memory_used_bytes);
-          const memTotal = formatBytes(m.memory_total_bytes);
-          const diskUsed = formatBytes(m.disk_used_bytes);
-          const diskTotal = formatBytes(m.disk_total_bytes);
-          const memPercent = Math.round((m.memory_used_bytes / (m.memory_total_bytes || 1)) * 100);
-
-          return `
-            <div class="machine-card">
-              <div class="machine-card-header">
-                <div class="machine-identity">
-                  <span class="platform-icon">${m.platform === 'linux' ? '🐧' : m.platform === 'macos' ? '🍎' : '💻'}</span>
-                  <div>
-                    <h3 class="machine-name">${m.name}</h3>
-                    <span class="machine-ip">${m.ip_address}</span>
-                  </div>
-                </div>
-                <span class="badge-online">ONLINE</span>
-              </div>
-
-              <!-- Hardware Telemetry Gauges -->
-              <div class="telemetry-box">
-                <div class="gauge-row">
-                  <span class="gauge-label">CPU (${m.cpu_usage.toFixed(1)}%)</span>
-                  <div class="progress-bar-bg">
-                    <div class="progress-bar-fill fill-cpu" style="width: ${Math.min(100, Math.max(5, m.cpu_usage))}%"></div>
-                  </div>
-                </div>
-                <div class="gauge-row">
-                  <span class="gauge-label">RAM (${memPercent}%)</span>
-                  <div class="progress-bar-bg">
-                    <div class="progress-bar-fill fill-ram" style="width: ${memPercent}%"></div>
-                  </div>
-                  <span class="gauge-sub">${memUsed} / ${memTotal}</span>
-                </div>
-                <div class="gauge-row">
-                  <span class="gauge-label">DISK STORAGE</span>
-                  <span class="gauge-sub">${diskUsed} / ${diskTotal}</span>
-                </div>
-
-                ${m.battery ? `
-                  <div class="gauge-row battery-gauge-row">
-                    <div class="battery-head-row">
-                      <span class="gauge-label">POWER SUPPLY</span>
-                      <span class="battery-pill-badge ${m.battery.is_critical ? 'badge-critical-power' : m.battery.is_ac_connected ? 'badge-ac-power' : 'badge-battery-power'}">
-                        ${m.battery.is_critical ? '⚠️ 5% CRITICAL (DISCHARGING)' : m.battery.is_ac_connected ? `⚡ ${m.battery.percent}% (${m.battery.power_source})` : `🔋 ${m.battery.percent}% (${m.battery.power_source})`}
-                      </span>
-                    </div>
-                    <div class="progress-bar-bg">
-                      <div class="progress-bar-fill ${m.battery.is_critical ? 'fill-battery-critical' : 'fill-battery'}" style="width: ${m.battery.percent}%"></div>
-                    </div>
-                    ${m.battery.is_critical ? `
-                      <div class="battery-failover-action-bar">
-                        <span class="time-left-notice">⏱️ ~${m.battery.time_remaining_minutes || 8} min before shutdown</span>
-                        <button class="btn-evacuate-now" id="btn-evacuate-now-click">⚡ Evacuate Task to Office Mac</button>
-                      </div>
-                    ` : ''}
-                  </div>
-                ` : ''}
-              </div>
-
-              <div class="machine-card-footer">
-                <span>⏱️ Uptime: ${formatUptime(m.uptime_seconds)}</span>
-                <span>🤖 ${m.active_agents_count} agents</span>
-              </div>
-            </div>
-          `;
-        }).join('')}
+        ${renderMachinesCards()}
       </div>
 
       <!-- Installed Applications Shelf -->
@@ -1359,7 +1528,7 @@ function renderMeshView(): string {
         </div>
         <div class="mesh-stat-row">
           <span class="mesh-stat-title">Round-trip Latency:</span>
-          <span class="mesh-stat-value">${state.latencyMs} ms</span>
+          <span class="mesh-stat-value mesh-stat-value-latency">${state.latencyMs} ms</span>
         </div>
         <div class="mesh-stat-row">
           <span class="mesh-stat-title">Encryption Suite:</span>
@@ -1389,20 +1558,16 @@ function renderMeshView(): string {
           <div class="hub-details-grid">
             <div><span class="lbl">Listen Address:</span> <code>${state.hubTopology?.hub_listen_addr || '0.0.0.0:7890'}</code></div>
             <div><span class="lbl">Node ID:</span> <code>${state.hubTopology?.hub_node_id || 'ed25519:7a4f91b8'}</code></div>
-            <div><span class="lbl">Active Spokes:</span> <strong>${state.hubTopology?.active_spokes_count || 3} connected</strong></div>
-            <div><span class="lbl">Uptime:</span> <strong>${formatUptime(state.hubTopology?.uptime_seconds || 1420)}</strong></div>
+            <div><span class="lbl">Active Spokes:</span> <strong>${state.hubTopology?.active_spokes_count || 0} connected</strong></div>
+            <div><span class="lbl">Uptime:</span> <strong>${formatUptime(state.hubTopology?.uptime_seconds || 0)}</strong></div>
           </div>
         </div>
 
         <!-- Enrolled Spoke Devices -->
         <div class="spokes-list-container">
-          <div class="spokes-list-title">CONNECTED SPOKE DEVICES (${state.hubTopology?.spokes?.length || 3})</div>
+          <div class="spokes-list-title">CONNECTED SPOKE DEVICES (${state.hubTopology?.spokes?.length || 0})</div>
           <div class="spokes-grid">
-            ${(state.hubTopology?.spokes || [
-              { device_id: 'device-moto-edge', device_name: 'Motorola edge 60 fusion', platform: 'android', is_online: true, ip_address: '192.168.1.142 (USB ADB)', role: 'admin' },
-              { device_id: 'peer-laptop', device_name: 'Home-Laptop-Linux', platform: 'linux', is_online: true, ip_address: '192.168.1.105', role: 'collaborator' },
-              { device_id: 'peer-desktop-mac', device_name: 'Office-Desktop-Mac', platform: 'macos', is_online: true, ip_address: '10.0.0.42 (Tailscale)', role: 'collaborator' }
-            ]).map((s: any) => `
+            ${(state.hubTopology?.spokes && state.hubTopology.spokes.length > 0) ? state.hubTopology.spokes.map((s: any) => `
               <div class="spoke-card ${s.is_online ? 'spoke-online' : 'spoke-offline'}">
                 <div class="spoke-card-left">
                   <span class="spoke-icon">${s.platform === 'android' ? '📱' : s.platform === 'macos' ? '🍎' : '💻'}</span>
@@ -1421,7 +1586,11 @@ function renderMeshView(): string {
                   ` : '<span class="this-device-tag">This Device</span>'}
                 </div>
               </div>
-            `).join('')}
+            `).join('') : `
+              <div class="empty-spokes" style="padding: 16px; color: var(--text-muted); font-size: 13px; grid-column: 1 / -1; text-align: center; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed var(--border-subtle);">
+                No spoke worker nodes enrolled yet. Use "+ Pair New Spoke" above to connect another machine or mobile device.
+              </div>
+            `}
           </div>
         </div>
       </div>
@@ -1685,10 +1854,7 @@ function attachEventHandlers() {
     item.addEventListener('click', () => {
       const id = item.getAttribute('data-conv-id');
       if (id) {
-        state.activeConversationId = id;
-        state.isMobileChatOpen = true;
-        loadMessages(id);
-        render();
+        openConversation(id);
       }
     });
   });
@@ -1707,8 +1873,7 @@ function attachEventHandlers() {
   const backBtn = document.getElementById('btn-back-to-roster');
   if (backBtn) {
     backBtn.addEventListener('click', () => {
-      state.isMobileChatOpen = false;
-      render();
+      closeMobileChat();
     });
   }
 
@@ -1960,21 +2125,7 @@ function attachEventHandlers() {
   }
 
   // Job Approval actions
-  document.querySelectorAll('[data-approve-job]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const jobId = btn.getAttribute('data-approve-job');
-      if (jobId) respondToApproval(jobId, true);
-    });
-  });
-
-  document.querySelectorAll('[data-reject-job]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const jobId = btn.getAttribute('data-reject-job');
-      if (jobId) respondToApproval(jobId, false);
-    });
-  });
+  attachJobActionHandlers();
 
   // Host URL update
   const saveHostBtn = document.getElementById('btn-save-host');
@@ -2103,7 +2254,7 @@ async function init() {
   await Promise.allSettled([
     loadConversations(),
     loadSessions(),
-    loadMachinesOverview(),
+    loadMachinesOverview(false),
     loadInstalledApps(),
     loadMeshStatus(),
     loadJobs(),
@@ -2113,7 +2264,10 @@ async function init() {
 
   if (state.conversations.length > 0) {
     state.activeConversationId = state.conversations[0].id;
-    await loadMessages(state.conversations[0].id);
+    await loadMessages(state.conversations[0].id, false);
+  } else {
+    state.activeConversationId = null;
+    state.messages = [];
   }
 
   render();

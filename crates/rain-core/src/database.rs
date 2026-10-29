@@ -60,66 +60,12 @@ pub struct InMemoryStore {
 impl InMemoryStore {
     pub fn new() -> Self {
         let now = chrono::Utc::now();
-        let mut devices = HashMap::new();
-        let mut auth_tokens = HashMap::new();
-
-        // Pre-enroll initial cluster devices so testing and star topology works out of the box
-        let mobile_id = "device-moto-edge".to_string();
-        let laptop_id = "peer-laptop".to_string();
-        let desktop_id = "peer-desktop-mac".to_string();
-
-        devices.insert(
-            mobile_id.clone(),
-            DeviceRegistration {
-                device_id: mobile_id.clone(),
-                device_name: "Motorola edge 60 fusion".to_string(),
-                platform: PlatformKind::Android,
-                enrolled_at: now - chrono::Duration::hours(2),
-                last_seen_at: now,
-                is_revoked: false,
-                is_approved: true,
-                ip_address: Some("192.168.1.142 (USB ADB)".to_string()),
-                role: "admin".to_string(),
-            },
-        );
-        auth_tokens.insert("rain_tok_mobile_demo".to_string(), mobile_id);
-
-        devices.insert(
-            laptop_id.clone(),
-            DeviceRegistration {
-                device_id: laptop_id.clone(),
-                device_name: "Home-Laptop-Linux".to_string(),
-                platform: PlatformKind::Linux,
-                enrolled_at: now - chrono::Duration::days(1),
-                last_seen_at: now - chrono::Duration::minutes(3),
-                is_revoked: false,
-                is_approved: true,
-                ip_address: Some("192.168.1.105".to_string()),
-                role: "collaborator".to_string(),
-            },
-        );
-
-        devices.insert(
-            desktop_id.clone(),
-            DeviceRegistration {
-                device_id: desktop_id.clone(),
-                device_name: "Office-Desktop-Mac".to_string(),
-                platform: PlatformKind::MacOS,
-                enrolled_at: now - chrono::Duration::days(3),
-                last_seen_at: now - chrono::Duration::minutes(1),
-                is_revoked: false,
-                is_approved: true,
-                ip_address: Some("10.0.0.42 (Tailscale/Relay)".to_string()),
-                role: "collaborator".to_string(),
-            },
-        );
-
         Self {
-            devices: Arc::new(RwLock::new(devices)),
+            devices: Arc::new(RwLock::new(HashMap::new())),
             spokes: Arc::new(RwLock::new(HashMap::new())),
             active_pairings: Arc::new(RwLock::new(HashMap::new())),
             email_otps: Arc::new(RwLock::new(HashMap::new())),
-            auth_tokens: Arc::new(RwLock::new(auth_tokens)),
+            auth_tokens: Arc::new(RwLock::new(HashMap::new())),
             hub_start_time: now,
         }
     }

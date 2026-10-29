@@ -73,9 +73,8 @@ async fn test_spoke_registration_and_heartbeat() {
 #[tokio::test]
 async fn test_real_git_evacuation_flow() {
     let chat = ChatStore::new();
-    let convs = chat.list_conversations().await;
-    assert!(!convs.is_empty(), "Conversation list must have initial chat");
-    let conv_id = convs[0].id;
+    let conv = chat.create_conversation("System Failover Audit".to_string(), true, vec!["human-user".to_string()]).await;
+    let conv_id = conv.id;
 
     // Trigger battery evacuation
     chat.execute_battery_failover_flow(conv_id, "Emergency test".to_string()).await;
@@ -83,7 +82,7 @@ async fn test_real_git_evacuation_flow() {
     // Verify messages created with real git artifacts
     let msgs = chat.get_messages(conv_id).await;
     let last_msg = msgs.last().expect("Messages should not be empty");
-    assert!(last_msg.text.contains("Emergency failover received"));
+    assert!(last_msg.text.contains("Work safely checkpointed"));
 
     // Find the emergency alert message with the patch attachment
     let evac_msg = msgs.iter().find(|m| m.text.contains("CRITICAL POWER ALERT")).expect("Evac message missing");

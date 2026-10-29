@@ -405,82 +405,26 @@ impl RemoteManager {
 
         let mut machines = vec![host_machine];
 
-        // Check for live dynamic spoke nodes from the Hub store
-        let mut has_live_spokes = false;
+        // Include only real live dynamic spoke nodes from the Hub store
         if let Some(store) = &self.store {
             let active_spokes = store.get_active_spokes().await;
-            if !active_spokes.is_empty() {
-                has_live_spokes = true;
-                for s in active_spokes {
-                    machines.push(MachineOverview {
-                        id: s.device_id,
-                        name: s.device_name,
-                        platform: s.platform,
-                        is_online: true,
-                        ip_address: s.ip_address,
-                        cpu_usage: s.cpu_usage,
-                        memory_used_bytes: s.memory_used_bytes,
-                        memory_total_bytes: s.memory_total_bytes,
-                        disk_used_bytes: s.disk_used_bytes,
-                        disk_total_bytes: s.disk_total_bytes,
-                        active_agents_count: s.active_agents_count,
-                        uptime_seconds: s.uptime_seconds,
-                        battery: s.battery,
-                    });
-                }
+            for s in active_spokes {
+                machines.push(MachineOverview {
+                    id: s.device_id,
+                    name: s.device_name,
+                    platform: s.platform,
+                    is_online: true,
+                    ip_address: s.ip_address,
+                    cpu_usage: s.cpu_usage,
+                    memory_used_bytes: s.memory_used_bytes,
+                    memory_total_bytes: s.memory_total_bytes,
+                    disk_used_bytes: s.disk_used_bytes,
+                    disk_total_bytes: s.disk_total_bytes,
+                    active_agents_count: s.active_agents_count,
+                    uptime_seconds: s.uptime_seconds,
+                    battery: s.battery,
+                });
             }
-        }
-
-        // If no dynamic spoke nodes are running yet, display cluster peers
-        if !has_live_spokes {
-            let macbook_peer = MachineOverview {
-                id: "peer-macbook".to_string(),
-                name: "Home-Laptop-Linux".to_string(),
-                platform: PlatformKind::Linux,
-                is_online: true,
-                ip_address: "192.168.1.142".to_string(),
-                cpu_usage: 14.2,
-                memory_used_bytes: 12_884_901_888,
-                memory_total_bytes: 34_359_738_368,
-                disk_used_bytes: 245_000_000_000,
-                disk_total_bytes: 512_000_000_000,
-                active_agents_count: 1,
-                uptime_seconds: 142_900,
-                battery: Some(BatteryStatus {
-                    percent: 5,
-                    is_charging: false,
-                    is_ac_connected: false,
-                    power_source: "Battery".to_string(),
-                    time_remaining_minutes: Some(11),
-                    is_critical: true,
-                }),
-            };
-
-            let server_peer = MachineOverview {
-                id: "peer-desktop-mac".to_string(),
-                name: "Office-Desktop-Mac".to_string(),
-                platform: PlatformKind::MacOS,
-                is_online: true,
-                ip_address: "10.0.0.42".to_string(),
-                cpu_usage: 42.8,
-                memory_used_bytes: 48_100_000_000,
-                memory_total_bytes: 128_000_000_000,
-                disk_used_bytes: 1_200_000_000_000,
-                disk_total_bytes: 4_000_000_000_000,
-                active_agents_count: 0,
-                uptime_seconds: 864_000,
-                battery: Some(BatteryStatus {
-                    percent: 100,
-                    is_charging: true,
-                    is_ac_connected: true,
-                    power_source: "AC Power (10Gbps Fiber)".to_string(),
-                    time_remaining_minutes: None,
-                    is_critical: false,
-                }),
-            };
-
-            machines.push(macbook_peer);
-            machines.push(server_peer);
         }
 
         machines
@@ -509,71 +453,22 @@ impl RemoteManager {
 
         let mut catalogs = vec![host];
 
-        let mut has_live_spokes = false;
         if let Some(store) = &self.store {
             let active_spokes = store.get_active_spokes().await;
-            if !active_spokes.is_empty() {
-                has_live_spokes = true;
-                for s in active_spokes {
-                    catalogs.push(MachineResourceCatalog {
-                        machine_id: s.device_id,
-                        machine_name: s.device_name,
-                        platform: s.platform,
-                        cpu_cores: s.cpu_cores,
-                        ram_total_gb: s.ram_total_gb,
-                        ram_free_gb: ((s.memory_total_bytes.saturating_sub(s.memory_used_bytes) as f32) / (1024.0 * 1024.0 * 1024.0) * 10.0).round() / 10.0,
-                        gpu_model: s.gpu_model,
-                        network_speed_mbps: 1000,
-                        tags: vec!["spoke-mesh".to_string(), "live-heartbeat".to_string()],
-                        battery: s.battery,
-                    });
-                }
+            for s in active_spokes {
+                catalogs.push(MachineResourceCatalog {
+                    machine_id: s.device_id,
+                    machine_name: s.device_name,
+                    platform: s.platform,
+                    cpu_cores: s.cpu_cores,
+                    ram_total_gb: s.ram_total_gb,
+                    ram_free_gb: ((s.memory_total_bytes.saturating_sub(s.memory_used_bytes) as f32) / (1024.0 * 1024.0 * 1024.0) * 10.0).round() / 10.0,
+                    gpu_model: s.gpu_model,
+                    network_speed_mbps: 1000,
+                    tags: vec!["spoke-mesh".to_string(), "live-heartbeat".to_string()],
+                    battery: s.battery,
+                });
             }
-        }
-
-        if !has_live_spokes {
-            let laptop = MachineResourceCatalog {
-                machine_id: "peer-laptop".to_string(),
-                machine_name: "Home-Laptop-Linux".to_string(),
-                platform: PlatformKind::Linux,
-                cpu_cores: 16,
-                ram_total_gb: 32.0,
-                ram_free_gb: 18.4,
-                gpu_model: Some("NVIDIA GeForce RTX 4070 (12GB VRAM)".to_string()),
-                network_speed_mbps: 300,
-                tags: vec!["mobile-workstation".to_string(), "cuda-12".to_string(), "local-models".to_string()],
-                battery: Some(BatteryStatus {
-                    percent: 5,
-                    is_charging: false,
-                    is_ac_connected: false,
-                    power_source: "Battery".to_string(),
-                    time_remaining_minutes: Some(11),
-                    is_critical: true,
-                }),
-            };
-
-            let desktop = MachineResourceCatalog {
-                machine_id: "peer-desktop-mac".to_string(),
-                machine_name: "Office-Desktop-Mac".to_string(),
-                platform: PlatformKind::MacOS,
-                cpu_cores: 64,
-                ram_total_gb: 128.0,
-                ram_free_gb: 84.2,
-                gpu_model: Some("Apple M3 Max 40-Core GPU".to_string()),
-                network_speed_mbps: 10_000,
-                tags: vec!["64-core-cpu".to_string(), "10gbps-fiber".to_string(), "staging-server".to_string(), "browser-automation".to_string()],
-                battery: Some(BatteryStatus {
-                    percent: 100,
-                    is_charging: true,
-                    is_ac_connected: true,
-                    power_source: "AC Power".to_string(),
-                    time_remaining_minutes: None,
-                    is_critical: false,
-                }),
-            };
-
-            catalogs.push(laptop);
-            catalogs.push(desktop);
         }
 
         catalogs

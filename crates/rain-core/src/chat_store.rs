@@ -1,6 +1,6 @@
 use rain_protocol::{
     AgentSession, ChatAttachment, ChatMessage, Conversation, JobDelegation, JobStatus,
-    MessageDeliveryStatus, SenderType, SessionState,
+    MessageDeliveryStatus, SenderType,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -18,156 +18,11 @@ pub struct ChatStore {
 
 impl ChatStore {
     pub fn new() -> Self {
-        let mut convs = HashMap::new();
-        let mut msgs = HashMap::new();
-        let mut sessions = HashMap::new();
-        let mut jobs = HashMap::new();
-
-        // 1. Initial AI Agent Sessions (across machines)
-        let s1 = AgentSession {
-            id: "codex-frontend".to_string(),
-            name: "Codex — Frontend".to_string(),
-            provider: "codex".to_string(),
-            machine_name: "Office-PC-Linux".to_string(),
-            state: SessionState::Online,
-            cwd: "~/projects/web-frontend".to_string(),
-            subagents: vec!["UI-Builder".to_string(), "Styling-Agent".to_string()],
-        };
-        let s2 = AgentSession {
-            id: "codex-backend".to_string(),
-            name: "Codex — Backend".to_string(),
-            provider: "codex".to_string(),
-            machine_name: "Home-Laptop-Linux".to_string(),
-            state: SessionState::Online,
-            cwd: "~/projects/web-api".to_string(),
-            subagents: vec!["DB-Migrator".to_string()],
-        };
-        let s3 = AgentSession {
-            id: "claude-reviewer".to_string(),
-            name: "Claude Code — Reviewer".to_string(),
-            provider: "claude_code".to_string(),
-            machine_name: "Office-Desktop-Mac".to_string(),
-            state: SessionState::Online,
-            cwd: "~/projects/review-audit".to_string(),
-            subagents: vec![],
-        };
-
-        sessions.insert(s1.id.clone(), s1);
-        sessions.insert(s2.id.clone(), s2);
-        sessions.insert(s3.id.clone(), s3);
-
-        // 2. Initial Group Chat: "Website Launch Team"
-        let group_id = uuid::Uuid::new_v4();
-        let group_conv = Conversation {
-            id: group_id,
-            title: "Website Launch Team".to_string(),
-            is_group: true,
-            is_active: true,
-            participant_ids: vec![
-                "human-user".to_string(),
-                "codex-frontend".to_string(),
-                "codex-backend".to_string(),
-                "claude-reviewer".to_string(),
-            ],
-            last_message: Some("Claude Code: Architecture review passed. Ready for deployment.".to_string()),
-            last_message_time: Some(chrono::Utc::now() - chrono::Duration::minutes(5)),
-            unread_count: 0,
-        };
-
-        let initial_msgs = vec![
-            ChatMessage {
-                id: uuid::Uuid::new_v4(),
-                conversation_id: group_id,
-                sender_id: "human-user".to_string(),
-                sender_name: "You".to_string(),
-                sender_type: SenderType::Human,
-                text: "Hey team, let's prepare the v1.0 release. Frontend and Backend status check please.".to_string(),
-                status: MessageDeliveryStatus::Read,
-                attachments: vec![],
-                job_delegation: None,
-                timestamp: chrono::Utc::now() - chrono::Duration::minutes(15),
-            },
-            ChatMessage {
-                id: uuid::Uuid::new_v4(),
-                conversation_id: group_id,
-                sender_id: "codex-frontend".to_string(),
-                sender_name: "Codex — Frontend".to_string(),
-                sender_type: SenderType::Agent,
-                text: "Frontend client build is clean. Responsive viewports and touch targets verified. Subagents finished bundle optimization.".to_string(),
-                status: MessageDeliveryStatus::Read,
-                attachments: vec![ChatAttachment {
-                    id: "att-1".to_string(),
-                    name: "bundle-report.json".to_string(),
-                    mime_type: "application/json".to_string(),
-                    size_bytes: 4096,
-                    preview_content: Some("{\n  \"gzip_size\": \"9.4 kB\",\n  \"modules\": 4\n}".to_string()),
-                    data_base64: None,
-                }],
-                job_delegation: None,
-                timestamp: chrono::Utc::now() - chrono::Duration::minutes(12),
-            },
-            ChatMessage {
-                id: uuid::Uuid::new_v4(),
-                conversation_id: group_id,
-                sender_id: "codex-backend".to_string(),
-                sender_name: "Codex — Backend".to_string(),
-                sender_type: SenderType::Agent,
-                text: "API daemon running on port 7890. SQLite schema migrated and capability routes secured.".to_string(),
-                status: MessageDeliveryStatus::Read,
-                attachments: vec![],
-                job_delegation: None,
-                timestamp: chrono::Utc::now() - chrono::Duration::minutes(10),
-            },
-            ChatMessage {
-                id: uuid::Uuid::new_v4(),
-                conversation_id: group_id,
-                sender_id: "claude-reviewer".to_string(),
-                sender_name: "Claude Code — Reviewer".to_string(),
-                sender_type: SenderType::Agent,
-                text: "Architecture review passed. Ready for deployment.".to_string(),
-                status: MessageDeliveryStatus::Read,
-                attachments: vec![],
-                job_delegation: None,
-                timestamp: chrono::Utc::now() - chrono::Duration::minutes(5),
-            },
-        ];
-
-        // Seed an initial completed job delegation for demonstration
-        let demo_job_id = uuid::Uuid::new_v4();
-        let demo_job = JobDelegation {
-            id: demo_job_id,
-            source_agent_id: "codex-backend".to_string(),
-            source_machine: "Home-Laptop-Linux".to_string(),
-            target_agent_id: "claude-reviewer".to_string(),
-            target_machine: "Office-Desktop-Mac".to_string(),
-            task_instruction: "Compile CUDA release binary on Home Laptop and run test suite on Office Mac".to_string(),
-            required_resources: vec!["rtx-4090-gpu".to_string(), "64-core-cpu".to_string()],
-            status: JobStatus::Completed,
-            progress_percent: 100,
-            shared_artifacts: vec![ChatAttachment {
-                id: "art-delegated-1".to_string(),
-                name: "release-v0.2-bin.tar.gz".to_string(),
-                mime_type: "application/gzip".to_string(),
-                size_bytes: 48 * 1024 * 1024,
-                preview_content: Some("[Compressed Binary: 48 MB, sha256: 8f921a4e...]".to_string()),
-                data_base64: None,
-            }],
-            requires_sudo: false,
-            sudo_command: None,
-            is_approved: true,
-            result_summary: Some("Binary compiled with GPU CUDA acceleration on Home Laptop, streamed P2P to Office Mac, all 32 tests passed.".to_string()),
-            created_at: chrono::Utc::now() - chrono::Duration::minutes(20),
-        };
-        jobs.insert(demo_job_id, demo_job);
-
-        convs.insert(group_id, group_conv);
-        msgs.insert(group_id, initial_msgs);
-
         Self {
-            conversations: Arc::new(RwLock::new(convs)),
-            messages: Arc::new(RwLock::new(msgs)),
-            sessions: Arc::new(RwLock::new(sessions)),
-            jobs: Arc::new(RwLock::new(jobs)),
+            conversations: Arc::new(RwLock::new(HashMap::new())),
+            messages: Arc::new(RwLock::new(HashMap::new())),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            jobs: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -412,108 +267,35 @@ impl ChatStore {
         incoming_attachments: Vec<ChatAttachment>,
     ) {
         let lower = prompt.to_lowercase();
-        let is_cross_machine = lower.contains("cross-machine")
-            || lower.contains("compile & test")
-            || lower.contains("share job")
-            || lower.contains("delegate")
-            || lower.contains("quantize")
-            || (lower.contains("compile") && lower.contains("test"));
-
         let is_battery_failover = lower.contains("battery")
             || lower.contains("5%")
             || lower.contains("power")
             || lower.contains("evacuate")
             || lower.contains("failover");
 
-        let is_approval_needed = lower.contains("sudo")
-            || lower.contains("restart")
-            || lower.contains("deploy prod");
-
         if is_battery_failover {
             self.execute_battery_failover_flow(conv_id, prompt).await;
             return;
         }
 
-        if is_cross_machine {
-            self.execute_cross_machine_collaboration(conv_id, prompt).await;
-            return;
-        }
+        let host_name = sysinfo::System::host_name().unwrap_or_else(|| "RAIN-Node".to_string());
+        let agent_name = target_session.unwrap_or_else(|| format!("Node Agent ({})", host_name));
 
-        if is_approval_needed {
-            self.execute_gated_approval_flow(conv_id, prompt).await;
-            return;
-        }
-
-        // Standard single-agent flow
-        let target_id = target_session.unwrap_or_else(|| "codex-frontend".to_string());
-        let agent_name = {
-            let mut sess_lock = self.sessions.write().await;
-            if let Some(s) = sess_lock.get_mut(&target_id) {
-                s.state = SessionState::Thinking;
-                s.name.clone()
-            } else {
-                "AI Agent".to_string()
-            }
-        };
-
-        tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
-
-        {
-            let mut sess_lock = self.sessions.write().await;
-            if let Some(s) = sess_lock.get_mut(&target_id) {
-                s.state = SessionState::Working;
-            }
-        }
-
-        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-
-        let has_image = incoming_attachments
-            .iter()
-            .any(|a| a.mime_type.starts_with("image/"));
-
-        let (reply_text, attachments) = if has_image {
-            (
-                "Image received and analyzed. Visual layout and UI elements inspected — no rendering defects detected.".to_string(),
-                vec![ChatAttachment {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    name: "vision-analysis.json".to_string(),
-                    mime_type: "application/json".to_string(),
-                    size_bytes: 512,
-                    preview_content: Some("{\n  \"contrast_ratio\": \"7.4:1\",\n  \"status\": \"pass\"\n}".to_string()),
-                    data_base64: None,
-                }],
-            )
-        } else if !incoming_attachments.is_empty() {
-            (
-                format!("Received artifact `{}`. Parsing and executing capability across workspace.", incoming_attachments[0].name),
-                vec![],
-            )
-        } else if lower.contains("test") {
-            (
-                format!("Completed test suite for `{}`. All unit tests passed with 0 failures.", prompt),
-                vec![],
-            )
-        } else if lower.contains("deploy") || lower.contains("build") {
-            (
-                "Build verified and packaged. Ready for deployment.".to_string(),
-                vec![],
-            )
+        let reply_text = if !incoming_attachments.is_empty() {
+            format!("Received {} attachment(s). Files saved to workspace.", incoming_attachments.len())
         } else {
-            (
-                format!("Received: \"{}\". Task processed across workspace.", prompt),
-                vec![],
-            )
+            format!("Instruction logged on {}: \"{}\". (Ready for Agent CLI hookup).", host_name, prompt)
         };
 
         let reply_msg = ChatMessage {
             id: uuid::Uuid::new_v4(),
             conversation_id: conv_id,
-            sender_id: target_id.clone(),
+            sender_id: "node-agent".to_string(),
             sender_name: agent_name.clone(),
             sender_type: SenderType::Agent,
             text: reply_text.clone(),
             status: MessageDeliveryStatus::Delivered,
-            attachments,
+            attachments: vec![],
             job_delegation: None,
             timestamp: chrono::Utc::now(),
         };
@@ -528,108 +310,6 @@ impl ChatStore {
             let mut conv_lock = self.conversations.write().await;
             if let Some(c) = conv_lock.get_mut(&conv_id) {
                 c.last_message = Some(format!("{}: {}", agent_name, reply_text));
-                c.last_message_time = Some(chrono::Utc::now());
-            }
-        }
-
-        {
-            let mut sess_lock = self.sessions.write().await;
-            if let Some(s) = sess_lock.get_mut(&target_id) {
-                s.state = SessionState::Completed;
-            }
-        }
-    }
-
-    async fn execute_cross_machine_collaboration(&self, conv_id: uuid::Uuid, prompt: String) {
-        let job_id = uuid::Uuid::new_v4();
-
-        // 1. Codex on Home Laptop accepts compilation task and advertises GPU
-        let job = JobDelegation {
-            id: job_id,
-            source_agent_id: "codex-backend".to_string(),
-            source_machine: "Home-Laptop-Linux (RTX 4090 GPU)".to_string(),
-            target_agent_id: "claude-reviewer".to_string(),
-            target_machine: "Office-Desktop-Mac (64-Core CPU)".to_string(),
-            task_instruction: format!("GPU compile release binary & stream to Office Mac for 64-core test run (`{}`)", prompt),
-            required_resources: vec!["rtx-4090-gpu".to_string(), "64-core-cpu".to_string(), "p2p-transfer".to_string()],
-            status: JobStatus::Running,
-            progress_percent: 35,
-            shared_artifacts: vec![ChatAttachment {
-                id: "art-delegated-2".to_string(),
-                name: "release-v0.2-bin.tar.gz".to_string(),
-                mime_type: "application/gzip".to_string(),
-                size_bytes: 48 * 1024 * 1024,
-                preview_content: Some("[P2P Streaming: 48 MB, 32 MB transferred...]".to_string()),
-                data_base64: None,
-            }],
-            requires_sudo: false,
-            sudo_command: None,
-            is_approved: true,
-            result_summary: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        {
-            let mut jobs_lock = self.jobs.write().await;
-            jobs_lock.insert(job_id, job.clone());
-        }
-
-        // Message 1: Codex claims GPU compilation and streams artifact
-        let msg1 = ChatMessage {
-            id: uuid::Uuid::new_v4(),
-            conversation_id: conv_id,
-            sender_id: "codex-backend".to_string(),
-            sender_name: "Codex — Backend (Home Laptop)".to_string(),
-            sender_type: SenderType::Agent,
-            text: "Home Laptop RTX 4090 GPU claimed. CUDA release binary compiled. Streaming 48MB build artifact directly to Office Desktop via P2P encrypted tunnel...".to_string(),
-            status: MessageDeliveryStatus::Delivered,
-            attachments: job.shared_artifacts.clone(),
-            job_delegation: Some(job.clone()),
-            timestamp: chrono::Utc::now(),
-        };
-
-        {
-            let mut lock = self.messages.write().await;
-            let list = lock.entry(conv_id).or_default();
-            list.push(msg1);
-        }
-
-        tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
-
-        // 2. Claude on Office Desktop receives artifact and runs tests
-        let mut completed_job = job.clone();
-        completed_job.status = JobStatus::Completed;
-        completed_job.progress_percent = 100;
-        completed_job.result_summary = Some("48MB artifact received over P2P tunnel. Deployed to Office Mac staging server. 32 integration tests passed across 64 CPU cores in 1.4s.".to_string());
-
-        {
-            let mut jobs_lock = self.jobs.write().await;
-            jobs_lock.insert(job_id, completed_job.clone());
-        }
-
-        let msg2 = ChatMessage {
-            id: uuid::Uuid::new_v4(),
-            conversation_id: conv_id,
-            sender_id: "claude-reviewer".to_string(),
-            sender_name: "Claude Code — Reviewer (Office Mac)".to_string(),
-            sender_type: SenderType::Agent,
-            text: "Artifact received on Office Desktop. Deployed to staging environment. Executed test suite across 64 CPU cores — all 32 integration tests passed!".to_string(),
-            status: MessageDeliveryStatus::Delivered,
-            attachments: vec![],
-            job_delegation: Some(completed_job),
-            timestamp: chrono::Utc::now(),
-        };
-
-        {
-            let mut lock = self.messages.write().await;
-            let list = lock.entry(conv_id).or_default();
-            list.push(msg2);
-        }
-
-        {
-            let mut conv_lock = self.conversations.write().await;
-            if let Some(c) = conv_lock.get_mut(&conv_id) {
-                c.last_message = Some("Claude: Cross-machine job delegation completed successfully.".to_string());
                 c.last_message_time = Some(chrono::Utc::now());
             }
         }
@@ -731,20 +411,20 @@ impl ChatStore {
         let patch_name = format!("git-checkpoint-{}.patch", commit_hash);
         let patch_size = diff_text.len() as u64;
 
-        // 1. Codex on Laptop / Host detects critical power, pushes git commit, and delegates
+        let host_name = sysinfo::System::host_name().unwrap_or_else(|| "RAIN-Node".to_string());
         let job = JobDelegation {
             id: job_id,
-            source_agent_id: "codex-backend".to_string(),
-            source_machine: "Home-Laptop-Linux (Battery: 5% Discharging ⚠️)".to_string(),
-            target_agent_id: "claude-reviewer".to_string(),
-            target_machine: "Office-Desktop-Mac (AC Power ⚡ 64-Core)".to_string(),
+            source_agent_id: "rain-power-watchdog".to_string(),
+            source_machine: format!("{} (Host)", host_name),
+            target_agent_id: "git-remote".to_string(),
+            target_machine: "GitHub Remote Repository".to_string(),
             task_instruction: format!(
-                "Emergency power evacuation: Pushed git checkpoint (commit `{}`) on branch `main`. {}. Transferring session context to AC-powered node.",
+                "Emergency power evacuation: Pushed git checkpoint (commit `{}`) on branch `main`. {}. Work safely saved to remote.",
                 commit_hash, push_result
             ),
-            required_resources: vec!["git-checkpoint".to_string(), "ac-power".to_string(), "failover-continuity".to_string()],
-            status: JobStatus::Running,
-            progress_percent: 50,
+            required_resources: vec!["git-checkpoint".to_string(), "power-evacuation".to_string()],
+            status: JobStatus::Completed,
+            progress_percent: 100,
             shared_artifacts: vec![ChatAttachment {
                 id: format!("art-git-evac-{}", &commit_hash),
                 name: patch_name,
@@ -756,7 +436,7 @@ impl ChatStore {
             requires_sudo: false,
             sudo_command: None,
             is_approved: true,
-            result_summary: None,
+            result_summary: Some(format!("Git checkpoint `{}` saved to origin/main. Host can safely power off or suspend.", commit_hash)),
             created_at: chrono::Utc::now(),
         };
 
@@ -769,11 +449,11 @@ impl ChatStore {
         let msg1 = ChatMessage {
             id: uuid::Uuid::new_v4(),
             conversation_id: conv_id,
-            sender_id: "codex-backend".to_string(),
-            sender_name: "Codex — Backend (Home Laptop)".to_string(),
+            sender_id: "rain-power-watchdog".to_string(),
+            sender_name: "RAIN Power Watchdog".to_string(),
             sender_type: SenderType::Agent,
             text: format!(
-                "⚠️ CRITICAL POWER ALERT: Battery reached 5% capacity (~8 min runtime). Executing autonomous evacuation: {}. Checkpoint commit `{}` on branch `main`. {}. Delegating active task to Office Desktop (AC Connected)...",
+                "⚠️ CRITICAL POWER ALERT: Battery reached 5% capacity (~8 min runtime). Autonomous evacuation completed: {}. Checkpoint commit `{}` on branch `main`. {}.",
                 file_stat, commit_hash, push_result
             ),
             status: MessageDeliveryStatus::Delivered,
@@ -788,35 +468,19 @@ impl ChatStore {
             list.push(msg1);
         }
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(1600)).await;
-
-        // 2. Claude Code on Office Mac accepts handoff, pulls branch, and resumes
-        let mut completed_job = job.clone();
-        completed_job.status = JobStatus::Completed;
-        completed_job.progress_percent = 100;
-        completed_job.result_summary = Some(format!(
-            "Office Desktop accepted emergency failover. Pulled commit `{}` from GitHub origin/main. Git workspace verified and in sync. Resumed test suite across 64 CPU cores. Home Laptop can now safely suspend without losing any work.",
-            commit_hash
-        ));
-
-        {
-            let mut jobs_lock = self.jobs.write().await;
-            jobs_lock.insert(job_id, completed_job.clone());
-        }
-
         let msg2 = ChatMessage {
             id: uuid::Uuid::new_v4(),
             conversation_id: conv_id,
-            sender_id: "claude-reviewer".to_string(),
-            sender_name: "Claude Code — Reviewer (Office Mac)".to_string(),
+            sender_id: "git-remote".to_string(),
+            sender_name: "Git Remote Coordinator".to_string(),
             sender_type: SenderType::Agent,
             text: format!(
-                "⚡ Emergency failover received and verified on Office Desktop! Synced git checkpoint `{}` from GitHub remote. Workspace prepared. All agent background tasks transferred to 64-core AC host. Primary machine may safely suspend without data loss.",
+                "⚡ Work safely checkpointed! Commit `{}` is synced with GitHub remote. Laptop/host may safely power off or suspend without data loss.",
                 commit_hash
             ),
             status: MessageDeliveryStatus::Delivered,
             attachments: vec![],
-            job_delegation: Some(completed_job),
+            job_delegation: Some(job),
             timestamp: chrono::Utc::now(),
         };
 
@@ -829,61 +493,7 @@ impl ChatStore {
         {
             let mut conv_lock = self.conversations.write().await;
             if let Some(c) = conv_lock.get_mut(&conv_id) {
-                c.last_message = Some(format!("Claude: Emergency battery failover completed. Task resumed on Office Mac (checkpoint `{}`).", commit_hash));
-                c.last_message_time = Some(chrono::Utc::now());
-            }
-        }
-    }
-
-    async fn execute_gated_approval_flow(&self, conv_id: uuid::Uuid, prompt: String) {
-        let job_id = uuid::Uuid::new_v4();
-
-        let job = JobDelegation {
-            id: job_id,
-            source_agent_id: "codex-backend".to_string(),
-            source_machine: "Home-Laptop-Linux".to_string(),
-            target_agent_id: "human-supervisor".to_string(),
-            target_machine: "Office-Desktop-Mac".to_string(),
-            task_instruction: format!("Privileged command requested: `{}`", prompt),
-            required_resources: vec!["root-elevation".to_string(), "sudo-access".to_string()],
-            status: JobStatus::RequiresApproval,
-            progress_percent: 50,
-            shared_artifacts: vec![],
-            requires_sudo: true,
-            sudo_command: Some(if prompt.contains("restart") { "systemctl restart nginx && systemctl status rain-daemon" } else { "sudo apt update && sudo apt upgrade -y" }.to_string()),
-            is_approved: false,
-            result_summary: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        {
-            let mut jobs_lock = self.jobs.write().await;
-            jobs_lock.insert(job_id, job.clone());
-        }
-
-        let approval_msg = ChatMessage {
-            id: uuid::Uuid::new_v4(),
-            conversation_id: conv_id,
-            sender_id: "codex-backend".to_string(),
-            sender_name: "Codex — Backend (Home Laptop)".to_string(),
-            sender_type: SenderType::Agent,
-            text: "⚠️ Privileged system action requested across mesh. Human authorization required to execute on Office Desktop.".to_string(),
-            status: MessageDeliveryStatus::Delivered,
-            attachments: vec![],
-            job_delegation: Some(job),
-            timestamp: chrono::Utc::now(),
-        };
-
-        {
-            let mut lock = self.messages.write().await;
-            let list = lock.entry(conv_id).or_default();
-            list.push(approval_msg);
-        }
-
-        {
-            let mut conv_lock = self.conversations.write().await;
-            if let Some(c) = conv_lock.get_mut(&conv_id) {
-                c.last_message = Some("⚠️ Approval Required: Sudo action proposed on Office Desktop".to_string());
+                c.last_message = Some(format!("RAIN: Autonomous evacuation completed. Checkpoint `{}` pushed to GitHub.", commit_hash));
                 c.last_message_time = Some(chrono::Utc::now());
             }
         }

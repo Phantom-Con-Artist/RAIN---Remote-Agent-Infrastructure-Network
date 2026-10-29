@@ -1060,15 +1060,14 @@ async fn handle_request(
         // --- AUTONOMOUS BATTERY & POWER FAILOVER ---
         (Method::POST, "/api/v1/power/failover") => {
             let convs = state.chat.list_conversations().await;
-            if let Some(first_conv) = convs.first() {
-                state.chat.execute_battery_failover_flow(first_conv.id, "Emergency battery evacuation".to_string()).await;
-                Ok(json_response(StatusCode::OK, &ApiResponse::ok("Autonomous battery failover executed.")))
+            let conv_id = if let Some(first_conv) = convs.first() {
+                first_conv.id
             } else {
-                Ok(json_response(
-                    StatusCode::BAD_REQUEST,
-                    &ApiResponse::<()>::err("No active conversation found to dispatch failover notification"),
-                ))
-            }
+                let auto_conv = state.chat.create_conversation("System Failover & Evacuation".to_string(), true, vec!["human-user".to_string()]).await;
+                auto_conv.id
+            };
+            state.chat.execute_battery_failover_flow(conv_id, "Emergency battery evacuation".to_string()).await;
+            Ok(json_response(StatusCode::OK, &ApiResponse::ok("Autonomous battery failover executed.")))
         }
 
         _ => Ok(json_response(
