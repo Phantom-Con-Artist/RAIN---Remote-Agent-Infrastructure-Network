@@ -266,18 +266,6 @@ impl ChatStore {
         target_session: Option<String>,
         incoming_attachments: Vec<ChatAttachment>,
     ) {
-        let lower = prompt.to_lowercase();
-        let is_battery_failover = lower.contains("battery")
-            || lower.contains("5%")
-            || lower.contains("power")
-            || lower.contains("evacuate")
-            || lower.contains("failover");
-
-        if is_battery_failover {
-            self.execute_battery_failover_flow(conv_id, prompt).await;
-            return;
-        }
-
         let host_name = sysinfo::System::host_name().unwrap_or_else(|| "RAIN-Node".to_string());
         let agent_name = target_session.unwrap_or_else(|| format!("Node Agent ({})", host_name));
 
