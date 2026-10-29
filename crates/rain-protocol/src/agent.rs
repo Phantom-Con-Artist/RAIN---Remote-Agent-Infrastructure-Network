@@ -15,6 +15,10 @@ pub struct AgentProcess {
     pub id: uuid::Uuid,
     pub name: String,
     pub provider: String,
+    #[serde(default)]
+    pub machine: Option<String>,
+    #[serde(default)]
+    pub interactive: bool,
     pub pid: Option<u32>,
     pub command: String,
     pub args: Vec<String>,
@@ -33,6 +37,10 @@ pub struct AgentLaunchRequest {
     pub command: String,
     pub args: Vec<String>,
     pub cwd: Option<String>,
+    #[serde(default)]
+    pub interactive: bool,
+    #[serde(default)]
+    pub machine: Option<String>,
     pub env_vars: std::collections::HashMap<String, String>,
 }
 

@@ -32,6 +32,22 @@ pub(crate) async fn handle_request(
     req: Request<Incoming>,
     state: AppState,
 ) -> Result<HttpResponse, hyper::Error> {
+    let mutating = req.method() != Method::GET
+        && req.method() != Method::HEAD
+        && req.method() != Method::OPTIONS;
+    let response = dispatch(req, state.clone()).await?;
+    if mutating {
+        if let Err(e) = state.chat.persist(&state.history_path).await {
+            return Ok(crate::response::json_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &rain_protocol::ApiResponse::<()>::err(format!("History write failed: {e}")),
+            ));
+        }
+    }
+    Ok(response)
+}
+
+async fn dispatch(req: Request<Incoming>, state: AppState) -> Result<HttpResponse, hyper::Error> {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
     if method == Method::OPTIONS {

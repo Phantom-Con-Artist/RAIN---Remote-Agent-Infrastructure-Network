@@ -9,3 +9,7 @@ pub use capability_registry::CapabilityRegistry;
 pub use chat_store::ChatStore;
 pub use database::InMemoryStore;
 pub use remote_manager::RemoteManager;
+
+pub mod terminal;
+
+mod persistence;

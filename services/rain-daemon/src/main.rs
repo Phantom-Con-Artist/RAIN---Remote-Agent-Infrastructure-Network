@@ -68,17 +68,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let remote = Arc::new(RemoteManager::new_with_store((*store).clone()));
 
     let supervisor = Arc::new(AgentSupervisor::new());
-    let chat = Arc::new(ChatStore::with_supervisor((*supervisor).clone()));
+    let history_path = std::path::PathBuf::from(
+        std::env::var("RAIN_STATE_PATH").unwrap_or_else(|_| ".rain/state.json".into()),
+    );
+    let chat = Arc::new(
+        ChatStore::restore((*supervisor).clone(), &history_path)
+            .await
+            .map_err(std::io::Error::other)?,
+    );
+    let event_path = history_path.clone();
     let mut events = supervisor.subscribe();
     let chat_events = chat.clone();
     tokio::spawn(async move {
-        loop { match events.recv().await {
-            Ok(event) => chat_events.record_event(event).await,
-            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => tracing::warn!("Missed {} agent events", n),
-            Err(_) => break,
-        }}
+        loop {
+            match events.recv().await {
+                Ok(event) => {
+                    chat_events.record_event(event).await;
+                    if let Err(e) = chat_events.persist(&event_path).await {
+                        error!("History write failed: {}", e);
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!("Missed {} agent events", n)
+                }
+                Err(_) => break,
+            }
+        }
     });
     let state = AppState {
+        history_path,
         registry: Arc::new(CapabilityRegistry::new()),
         supervisor,
         store: store.clone(),

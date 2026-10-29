@@ -10,11 +10,12 @@ use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct ChatStore {
-    supervisor: crate::AgentSupervisor,
-    conversations: Arc<RwLock<HashMap<uuid::Uuid, Conversation>>>,
-    messages: Arc<RwLock<HashMap<uuid::Uuid, Vec<ChatMessage>>>>,
+    pub(crate) supervisor: crate::AgentSupervisor,
+    pub(crate) conversations: Arc<RwLock<HashMap<uuid::Uuid, Conversation>>>,
+    pub(crate) messages: Arc<RwLock<HashMap<uuid::Uuid, Vec<ChatMessage>>>>,
+    pub(crate) persistence_lock: Arc<tokio::sync::Mutex<()>>,
     sessions: Arc<RwLock<HashMap<String, AgentSession>>>,
-    jobs: Arc<RwLock<HashMap<uuid::Uuid, JobDelegation>>>,
+    pub(crate) jobs: Arc<RwLock<HashMap<uuid::Uuid, JobDelegation>>>,
 }
 
 impl ChatStore {
@@ -23,6 +24,7 @@ impl ChatStore {
     pub fn with_supervisor(supervisor: crate::AgentSupervisor) -> Self {
         Self {
             supervisor,
+            persistence_lock: Arc::new(tokio::sync::Mutex::new(())),
             conversations: Arc::new(RwLock::new(HashMap::new())),
             messages: Arc::new(RwLock::new(HashMap::new())),
             sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -45,7 +47,7 @@ impl ChatStore {
     pub async fn list_sessions(&self) -> Vec<AgentSession> {
         self.supervisor.list_agents().await.into_iter().map(|a| AgentSession {
             id: a.id.to_string(), name: a.name, provider: a.provider,
-            machine_name: sysinfo::System::host_name().unwrap_or_default(), cwd: a.cwd,
+            machine_name: a.machine.unwrap_or_else(|| sysinfo::System::host_name().unwrap_or_default()), cwd: a.cwd,
             subagents: vec![], state: match a.status {
                 rain_protocol::AgentStatus::Running => rain_protocol::SessionState::Online,
                 rain_protocol::AgentStatus::Completed => rain_protocol::SessionState::Completed,

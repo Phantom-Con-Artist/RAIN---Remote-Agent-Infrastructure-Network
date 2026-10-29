@@ -8,7 +8,7 @@ async fn chat_delivers_literal_commands_to_group_processes() {
     let agent = supervisor.start_agent(AgentLaunchRequest {
         name: "echo".into(), provider: "custom".into(), command: "sh".into(),
         args: vec!["-c".into(), "while IFS= read -r line; do printf '%s\\n' \"$line\"; done".into()],
-        cwd: None, env_vars: Default::default(),
+        cwd: None, interactive: false, machine: None, env_vars: Default::default(),
     }).await.unwrap();
     let conv = chat.create_conversation("Team".into(), true, vec![agent.id.to_string()]).await;
     assert_eq!(chat.list_sessions().await.len(), 1);

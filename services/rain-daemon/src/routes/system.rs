@@ -66,6 +66,42 @@ pub(super) async fn handle(
             Ok(json_response(StatusCode::OK, &ApiResponse::ok(agents)))
         }
 
+        (Method::GET, "/api/v1/agents/machines") => {
+            let hosts: std::collections::HashMap<String, String> = serde_json::from_str(
+                &std::env::var("RAIN_SSH_HOSTS").unwrap_or_else(|_| "{}".into()),
+            )
+            .unwrap_or_default();
+            let mut aliases: Vec<_> = hosts.keys().cloned().collect();
+            aliases.sort();
+            Ok(json_response(StatusCode::OK, &ApiResponse::ok(aliases)))
+        }
+        (Method::POST, path) if path.starts_with("/api/v1/agents/") && path.ends_with("/input") => {
+            let id = path
+                .split('/')
+                .nth(4)
+                .and_then(|id| uuid::Uuid::parse_str(id).ok());
+            let body = req.into_body().collect().await?.to_bytes();
+            match (
+                id,
+                serde_json::from_slice::<rain_protocol::AgentInputRequest>(&body),
+            ) {
+                (Some(id), Ok(input)) => match state.supervisor.send_raw(id, &input.input).await {
+                    Ok(()) => Ok(json_response(
+                        StatusCode::OK,
+                        &ApiResponse::ok("Input sent"),
+                    )),
+                    Err(e) => Ok(json_response(
+                        StatusCode::BAD_REQUEST,
+                        &ApiResponse::<()>::err(e),
+                    )),
+                },
+                _ => Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &ApiResponse::<()>::err("Invalid session or input"),
+                )),
+            }
+        }
+
         (Method::POST, "/api/v1/agents/start") => {
             let body_bytes = req.into_body().collect().await?.to_bytes();
             match serde_json::from_slice::<AgentLaunchRequest>(&body_bytes) {
