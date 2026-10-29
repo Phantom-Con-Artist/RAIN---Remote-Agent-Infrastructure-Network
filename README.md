@@ -102,13 +102,22 @@ project-rain/
 * **Node.js:** 18+ & `npm`
 * **Android SDK & NDK:** (Optional, for building the Android APK)
 
-### 2. Run the Sovereign Daemon (Host)
+### 2. Run the Sovereign Daemon (Host Hub)
 ```bash
 cargo run --bin rain-daemon
+# Or with explicit port:
+RAIN_PORT=7890 cargo run --bin rain-daemon
 ```
-The daemon starts on `http://0.0.0.0:7890`.
+The central Hub starts on `http://0.0.0.0:7890`.
 
-### 3. Run the Client (Web Preview / Desktop)
+### 3. Run a Secondary Node (Spoke Worker)
+On another laptop, workstation, or test terminal:
+```bash
+cargo run --bin rain-daemon -- --spoke --hub-url http://<HUB_IP>:7890 --name "MacBook-Worker-Spoke"
+```
+The Spoke registers with the Hub and continuously streams real CPU, RAM, disk, and battery telemetry.
+
+### 4. Run the Client (Web Preview / Desktop)
 ```bash
 cd apps/rain-client
 npm install

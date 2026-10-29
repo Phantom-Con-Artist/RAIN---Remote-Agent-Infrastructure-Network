@@ -93,3 +93,4 @@ async fn test_real_git_evacuation_flow() {
     assert!(patch.name.starts_with("git-checkpoint-"));
     assert!(patch.name.ends_with(".patch"));
 }
+
