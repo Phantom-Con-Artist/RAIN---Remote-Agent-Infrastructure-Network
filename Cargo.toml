@@ -7,3 +7,6 @@ members = [
     "apps/rain-client/src-tauri",
 ]
 resolver = "2"
+
+[workspace.package]
+license = "Apache-2.0"

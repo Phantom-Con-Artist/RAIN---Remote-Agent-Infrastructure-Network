@@ -2,6 +2,7 @@
 name = "rain-core"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Core orchestration, capability registry, and agent supervisor for RAIN"
 
 [dependencies]

@@ -1,147 +1,95 @@
-# 🌧️ RAIN — Remote Agent Infrastructure Network
+# RAIN — Remote Agent Infrastructure Network
 
-> **A sovereign, decentralized, peer-to-peer personal cloud and autonomous AI agent orchestration network with a WhatsApp-grade mobile workbench.**
+RAIN is a self-hosted messenger and workbench for AI coding agents running on your own computers. Its purpose is to bring agent sessions, group conversations, remote files, and terminals into one interface, so you can coordinate work without moving between machines and terminals.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust: 1.80+](https://img.shields.io/badge/Rust-1.80+-orange.svg)](https://www.rust-lang.org/)
-[![Tauri: 2.0](https://img.shields.io/badge/Tauri-2.0-24C8D8.svg)](https://tauri.app/)
-[![TypeScript: 5.0](https://img.shields.io/badge/TypeScript-5.0-3178C6.svg)](https://www.typescriptlang.org/)
+The machines provide execution environments. Your installed CLIs provide the AI integrations and use their existing accounts. RAIN provides the conversation, routing, file-transfer, and remote-control layer.
 
----
+## Current capabilities
 
-## 💡 Overview
+| Capability | Current implementation |
+| --- | --- |
+| Direct and group chat | Messenger-style conversations, agent contacts, recipient selection, delivery states, and provider activity. |
+| Agent discovery | Scan the local host or configured SSH machines for executable CLIs. Recognized tools have launch controls; other executables are searchable. |
+| Structured chat adapters | Agy, Muse, Codex, and Claude Code adapters return assistant text instead of terminal redraws. Agy and Muse were exercised together with real model replies. |
+| Group routing | Send to every member or target `@name`. Replies return to their originating conversation. Recent group context accompanies chat-adapter tasks. |
+| Independent sessions | Removing a group deletes its conversation/workflow routing and leaves agents running. Stopped sessions can be removed separately. |
+| Interactive terminals | Unix PTYs and xterm.js support native CLI interfaces, keyboard input, paste, terminal controls, and resizing. |
+| File sharing | Upload a file or attach one from a selected host. RAIN copies contents to each recipient host and verifies size and SHA-256 before dispatch. Up to four files, each at most 5 MB, per message. |
+| Remote explorer | Browse, read, and edit files on local or configured SSH hosts; launch a terminal in the displayed directory. |
+| Persistence | Atomic JSON snapshots retain conversations, messages, workflow records, and session metadata. Restarted processes are marked stopped rather than silently relaunched. |
+| Interface | Neutral light/dark themes, ASCII RAIN identity, desktop navigation, and mobile conversation navigation. |
 
-**RAIN (Remote Agent Infrastructure Network)** transforms your computers, home labs, and office workstations into a **sovereign, private, decentralized cloud**. Instead of paying cloud vendors or routing sensitive code through third parties, your machines act as autonomous peer nodes in an end-to-end encrypted cluster.
+Grouping does not itself create an autonomous agent-to-agent orchestration engine. RAIN routes explicit assignments and shares recent conversation context; provider-native orchestration remains with each CLI. Slash-command behavior depends on the provider and its selected mode. Terminal-only CLIs retain native terminal access.
 
-RAIN provides:
-1. **WhatsApp-Grade Mobile Experience:** Monitor hardware, browse remote filesystems, execute privileged `sudo` commands, and orchestrate agent teams directly from your phone.
-2. **Autonomous Cross-Machine Delegation:** Agents communicate across systems (e.g. Claude CLI on an Office Mac coordinating with Codex CLI on a GPU laptop) to delegate builds, transfer artifacts, and share resources.
-3. **Hardware-Aware Autonomous Battery Failover:** When a mobile laptop drops to 5% battery, agents automatically commit uncommitted changes to Git, push to remote, and migrate the session context to an AC-powered node.
-4. **Sovereign Star-Mesh Topology & Instant Pairing:** Run one machine as your central Hub. Pair secondary devices with a **single QR scan**, a **6-digit PIN**, or **Email OTP**, with permanent zero-touch mutual authentication thereafter.
+## Run locally
 
----
+Prerequisites: a current Rust toolchain, Node.js and npm, Python 3, and the agent CLIs you want to use. Interactive PTYs currently require a Unix host. The exercised host platform is Linux.
 
-## 🏛️ Architecture
+From the repository root:
 
-```mermaid
-graph TD
-    subgraph ControlPlane["Control Plane: Sovereign Star Topology"]
-        Hub["🖥️ Primary Sovereign HUB (rain-daemon)<br>• Port 7890 (LAN / Tailscale / Relay)<br>• SQLite Device Registry & Mutual Keystore<br>• Message Queue & Power Watchdog"]
-        
-        Phone["📱 Motorola Edge (Android App)<br>Admin • USB ADB / Wi-Fi"]
-        Laptop["💻 Home Laptop (Linux)<br>Collaborator • 192.168.1.105"]
-        Desktop["🖥️ Office Mac (macOS)<br>Collaborator • 10.0.0.42"]
-        
-        Hub <===>|Ed25519 Mutual Auth| Phone
-        Hub <===>|Ed25519 Mutual Auth| Laptop
-        Hub <===>|Ed25519 Mutual Auth| Desktop
-    end
-
-    subgraph DataPlane["Data Plane: Peer-to-Peer Mesh (Fast & Unthrottled)"]
-        Laptop -.->|"P2P Direct Chunk Transfer<br>(48MB Binaries / Git Patches)"| Desktop
-    end
-```
-
----
-
-## ✨ Key Features
-
-### 1. 👥 Dynamic Groups & Direct 1-on-1 Agent Chat
-* Create custom multi-agent strike teams on the fly with custom directives.
-* Stop or delete active groups anytime from mobile.
-* Direct 1-on-1 sessions with individual agents across any linked machine.
-* Send rich attachments: code diffs, logs, screenshots, and payloads.
-
-### 2. ⚡ Autonomous Cross-Machine Collaboration & Job Cards
-* Interactive **Distributed Cloud Job Cards** rendered in real time with live progress indicators.
-* Machines publish hardware catalogs (CPU cores, RAM, GPU models, link speeds).
-* When a task requires specialized compute (e.g. discrete GPU or high-thread CPU), agents autonomously hand off the task and stream build artifacts peer-to-peer.
-
-### 3. 🔋 Hardware-Aware 5% Battery Git Evacuation
-* Real-time battery & power supply monitoring across all cluster nodes.
-* **Autonomous Power Evacuation:** When battery reaches critical threshold (<= 5% discharging), agents automatically:
-  1. `git add -A` and `git commit -m "chore: auto-checkpoint (battery critical)"`.
-  2. `git push origin <branch>`.
-  3. Transfer the active task context to an AC-connected node.
-  4. Resume execution on the target node so the laptop can safely suspend.
-
-### 4. 🖥️ Remote Machine Dashboard, File Explorer & Terminal
-* **Hardware Telemetry:** Live gauges for CPU, RAM, disk storage, and battery.
-* **Remote File Explorer & Editor:** Browse directories with breadcrumbs, inspect files, and edit code with in-app "Save to Machine".
-* **Remote App Launcher:** Launch desktop applications (VS Code, Blender, Godot, Firefox) remotely.
-* **Sudo Approval Gates:** Privileged commands require human-in-the-loop authorization with password elevation from mobile.
-
-### 5. 🔗 3-Way Instant Pairing & Zero-Touch Reconnection
-* **Host Mode (QR Code & Deep Link):** Scan with mobile camera to pair in 1 second.
-* **6-Digit Machine PIN:** Simple code verification like pairing Apple TV or WhatsApp Web.
-* **Email OTP:** Secure onboarding for coworkers or friends without sharing terminal credentials.
-* **Permanent Mutual Auth:** Cryptographic token saved locally; zero passwords on future reconnects.
-
----
-
-## 📂 Project Structure
-
-```
-project-rain/
-├── crates/
-│   ├── rain-protocol/        # Core message schemas, job delegation, & auth models
-│   ├── rain-core/            # Chat store, remote workbench manager, & state engine
-│   └── rain-platform/        # Native OS abstractions & platform hooks
-├── services/
-│   └── rain-daemon/          # Sovereign host HTTP & WebSocket server (port 7890)
-└── apps/
-    └── rain-client/          # TypeScript SPA & Tauri 2.0 Android / Desktop client
-```
-
----
-
-## 🚀 Quickstart
-
-### 1. Prerequisites
-* **Rust:** 1.80+ (`rustup default stable`)
-* **Node.js:** 18+ & `npm`
-* **Android SDK & NDK:** (Optional, for building the Android APK)
-
-### 2. Run the Sovereign Daemon (Host Hub)
-```bash
+```sh
+npm --prefix apps/rain-client ci
+npm --prefix apps/rain-client run build
 cargo run --bin rain-daemon
-# Or with explicit port:
-RAIN_PORT=7890 cargo run --bin rain-daemon
-```
-The central Hub starts on `http://0.0.0.0:7890`.
-
-### 3. Run a Secondary Node (Spoke Worker)
-On another laptop, workstation, or test terminal:
-```bash
-cargo run --bin rain-daemon -- --spoke --hub-url http://<HUB_IP>:7890 --name "MacBook-Worker-Spoke"
-```
-The Spoke registers with the Hub and continuously streams real CPU, RAM, disk, and battery telemetry.
-
-### 4. Run the Client (Web Preview / Desktop)
-```bash
-cd apps/rain-client
-npm install
-npm run dev
 ```
 
-### 4. Build Android APK
-```bash
-cd apps/rain-client
-npm run tauri android build -- --debug
+Open **http://127.0.0.1:7890**. Run the daemon from the repository root so it can find the built client. After backend changes, rebuild and restart the daemon; refreshing the browser alone does not update a running Rust process.
+
+In **Machines**, scan the host and choose **Chat with Agy**, **Chat with Muse**, or another supported adapter. Use **Launch terminal** or the custom launcher for native terminal sessions. In **Messages**, choose an agent or create a group using active sessions. Structured chat and terminal sessions are distinct integration modes.
+
+For frontend development, run `npm --prefix apps/rain-client run dev` and set the client’s host address in **Network** to the running daemon, for example `http://127.0.0.1:7890`.
+
+## Run remotely
+
+The daemon binds to localhost. Use SSH forwarding for remote access:
+
+```sh
+ssh -N -L 7890:127.0.0.1:7890 your-user@your-host
 ```
-The universal debug APK is generated at:
-`apps/rain-client/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
 
----
+Open `http://127.0.0.1:7890` on the client computer. Configure execution machines on the daemon host:
 
-## 🔒 Security & Privacy
+```sh
+export RAIN_SSH_HOSTS='{"workstation":"you@workstation", "gpu":"rain-gpu"}'
+cargo run --bin rain-daemon
+```
 
-* **Zero Centralized Servers:** All agent messaging, terminal commands, and telemetry route strictly through your sovereign nodes.
-* **End-to-End Encryption:** Transport secured via Noise Protocol (ChaCha20-Poly1305) and Ed25519 mutual authentication.
-* **Human-in-the-Loop Sudo Gates:** Sensitive commands require explicit mobile approval before execution.
+Each SSH target must already work with the daemon account’s keys and verified host keys. RAIN uses non-interactive SSH with strict host-key verification. Python 3 is required on hosts used for discovery, file operations, and chat adapters. The machine selector determines where launches and file operations occur.
 
----
+Remote access encryption and authentication come from SSH. RAIN does not currently implement the Noise/Ed25519 mesh transport described in the historical vision. Pairing scaffolding is not a substitute for SSH or a complete API authorization boundary.
 
-## 📄 License
+See [remote setup and operation](docs/running-remotely.md) for details.
 
-This project is licensed under the [MIT License](LICENSE).
+## Verification and limits
+
+The completed browser tests exercised Agy/Muse launch, group creation, real replies from both agents, targeted `@agy` delivery, conversation isolation, group deletion without stopping agents, native terminal input, stopped-session removal, and local file editing.
+
+The file-sharing test had **Agy create a file**, attached it through the UI, and had **Muse read the transferred copy and return its token**. SHA-256 matched, and a deliberately corrupted hash was rejected. Binary transfer integrity also has a regression test.
+
+The focused Rust suites cover process/chat delivery, adapter routing, PTYs, persistence, group/session lifecycle, discovery, file access, and transfer integrity. Run:
+
+```sh
+cargo test -p rain-core --test agent_chat_tests --test chat_adapter_tests --test host_access_tests --test terminal_persistence_tests
+cargo check --workspace
+npm --prefix apps/rain-client run build
+```
+
+Codex/Claude adapters are implemented but have not had equivalent live model tests in this session. Configured remote SSH hosts, physical phones, and Android packaging still need end-to-end verification. The broader UI audit was stopped at the owner’s request; remaining work and runtime caveats are recorded in [STATUS.md](docs/STATUS.md).
+
+## Project layout
+
+```text
+crates/rain-protocol/       Shared API, agent, chat, and remote types
+crates/rain-core/           Sessions, chat routing, adapters, persistence, host access
+crates/rain-platform/       Host telemetry and platform abstractions
+services/rain-daemon/src/   HTTP daemon with modular feature routes
+apps/rain-client/          React client and Tauri shell
+```
+
+The implementation uses Rust/Tokio, Hyper, React/TypeScript, Tauri, xterm.js, Python helpers, and OpenSSH. Conversation snapshots default to `.rain/state.json`; set `RAIN_STATE_PATH` to change the location. Use one daemon per state file.
+
+[PRODUCT.md](PRODUCT.md) records purpose and product constraints. [DESIGN.md](DESIGN.md) records the UI system. [The original description](project-rain-description.md) is historical vision rather than a checklist of implemented features.
+
+## License
+
+Copyright 2026 Subhradeep Sarkar. Licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE).

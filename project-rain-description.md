@@ -1,3 +1,5 @@
+> Historical product vision. See [README.md](README.md) and [docs/STATUS.md](docs/STATUS.md) for implemented capabilities and current limitations.
+
 # RAIN — Remote Agent Infrastructure Network
 
 **Project Vision & Product Specification**
