@@ -1,0 +1,191 @@
+{
+  "schema": "unparalleled-contract/1",
+  "kind": "ui",
+  "scope": "overhaul",
+  "revision": "rain-neutral-material-v1",
+  "objective": "Choose a machine, launch an installed CLI, and inspect its session or files in a neutral Material-style workbench.",
+  "intake": {
+    "request": "Finally fix the UI please It looks so cluttery and bad No gradient no bluisn colors pills etc use your unparalleled-ui and impeccable skills to enhance the UI and the design so that It feels professional dev tool. Light and Dark, A RAIN ACII Wordmark and LOGO same for the UI as well! I want an google material UI like screen and the typography, spacings etc",
+    "named_dimension": "none",
+    "pipelines_triggered": [],
+    "dismissed_pipelines": [],
+    "abstract_terms": [
+      "professional",
+      "cluttery",
+      "Material"
+    ],
+    "waiver_phrases": []
+  },
+  "state": {
+    "phase": "deliver",
+    "milestone": "Neutral workbench built and inspected; review fixes resolved",
+    "next_action": "Commit reviewed source and design documentation",
+    "blocked": []
+  },
+  "facts": [
+    {
+      "id": "F1",
+      "claim": "The owner explicitly requests light/dark, ASCII RAIN identity, Material-like spacing, and bans gradients, bluish colors, and pills.",
+      "observation": "user-stated",
+      "status": "verified",
+      "source": "User UI request in this conversation"
+    },
+    {
+      "id": "F2",
+      "claim": "RAIN has working local/SSH discovery, CLI launching, machine-scoped file editing, terminal controls, and group messaging.",
+      "observation": "source",
+      "status": "verified",
+      "source": "apps/rain-client/src/App.tsx and components; seven passing focused tests"
+    },
+    {
+      "id": "F3",
+      "claim": "Selecting a wrong machine or file path changes where execution and writes occur.",
+      "observation": "source",
+      "status": "verified",
+      "source": "crates/rain-core/src/host_access.rs and agent_supervisor.rs"
+    }
+  ],
+  "gaps": [],
+  "premise": {
+    "statement": "The selected machine anchors launch and file tasks; sessions stay independent of groups. The chrome uses one ASCII identity while task controls remain familiar.",
+    "swap_test": "Machine context, executable discovery, independent sessions, SSH paths, and group lifecycle are specific to RAIN; replacing the name does not replace those workflows.",
+    "invalidated_by": [
+      "Machine scope disappears during a task",
+      "Any blue accent, gradient, or pill returns",
+      "Agent sessions terminate when a group is deleted"
+    ],
+    "counter_argument": "A neutral rail and buttons alone could be a themed kit.",
+    "answer": "The actual host catalog launches real PTY sessions; the file explorer preserves machine scope and launches a terminal at the directory. Review must exercise these operations, not only inspect the shell.",
+    "status": "supported",
+    "basis": [
+      "F1",
+      "F2",
+      "F3"
+    ]
+  },
+  "stack": {
+    "choice": "Existing React/Tauri and modular CSS",
+    "rationale": "Preserves verified backend contracts and existing operations; Material-like spacing does not require a framework migration.",
+    "alternative": "MUI React components with a neutral theme, at the cost of a broad component migration.",
+    "user_chosen": false
+  },
+  "dimension": {
+    "value": "2d",
+    "user_named": false
+  },
+  "uses": [],
+  "rules": [
+    {
+      "id": "R1",
+      "quality": "professional",
+      "facts": [
+        "F1",
+        "F2"
+      ],
+      "relationship": "A developer must see the task and its available action before optional controls.",
+      "rule": "A 184px desktop navigation rail, compact header, and one scrollable task region; advanced launch controls are a disclosure.",
+      "grounds": [
+        "professional",
+        "cluttery",
+        "Material"
+      ],
+      "check": {
+        "kind": "inspected",
+        "how": "Open Machines at desktop, short laptop, tablet, and phone sizes and launch a terminal."
+      }
+    },
+    {
+      "id": "R2",
+      "quality": "neutral Material-like control language",
+      "facts": [
+        "F1"
+      ],
+      "relationship": "The user rejects blue accents, gradients, and pills but wants familiar controls.",
+      "rule": "Neutral paper/graphite surfaces, 4px control corners, 40\u201344px controls, 8px spacing increments, sans task text, ASCII chrome identity.",
+      "grounds": [
+        "Material",
+        "professional"
+      ],
+      "check": {
+        "kind": "inspected",
+        "how": "Inspect both themes and measure computed color and shape roles."
+      }
+    },
+    {
+      "id": "R3",
+      "quality": "scope continuity",
+      "facts": [
+        "F2",
+        "F3"
+      ],
+      "relationship": "Machine context identifies the execution and edit destination.",
+      "rule": "Machine selector above discovery and in file toolbar; selecting a new machine clears the explorer and editor.",
+      "grounds": [
+        "cluttery"
+      ],
+      "check": {
+        "kind": "exercised",
+        "how": "Browse a test path, open the editor, and verify explicit terminal controls and selected machine."
+      }
+    }
+  ],
+  "approval": {
+    "state": "approved",
+    "specimen_revision": "user-directed-material-baseline",
+    "source": "User explicitly authorized UI improvements during implementation and supplied the final Material/neutral/ASCII direction. This records implementation authorization, not approval of unseen screenshots.",
+    "scope": "Reversible implementation under the user-provided visual direction; developer instruction requires completing reviewable local work without an approval pause."
+  },
+  "pipelines": {},
+  "results": [
+    {
+      "rule": "R1",
+      "revision": "rain-neutral-material-v1",
+      "status": "pass",
+      "evidence": [
+        "Opened eight /tmp/rain-ui-review screenshots; desktop rail and phone bottom navigation preserve one scrollable task region. Local HTTP terminal launch/stop passed.",
+        "file:/tmp/rain-ui-review/results.json",
+        "Browser sent /help to a real echo session through the chat composer and opened desktop/phone populated chat captures."
+      ]
+    },
+    {
+      "rule": "R2",
+      "revision": "rain-neutral-material-v1",
+      "status": "pass",
+      "evidence": [
+        "Both themes opened; computed backgrounds/text are neutral RGB triples. Detector returned []. No overflow at 320,390,768,1280,1440 widths.",
+        "file:/tmp/rain-ui-review/results.json"
+      ]
+    },
+    {
+      "rule": "R3",
+      "revision": "rain-neutral-material-v1",
+      "status": "pass",
+      "evidence": [
+        "Browser entered /tmp/rain-http-check in the path form and opened a Unicode-named test file in the editor. HTTP read/write roundtrip passed.",
+        "file:/tmp/rain-ui-review/results.json"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "A1",
+      "severity": "major",
+      "state": "fixed",
+      "location": "Host search placeholder",
+      "evidence": "Independent reviewer identified default low-contrast placeholder. Opaque --text-muted applied, desktop and phone recaptured and reviewed.",
+      "retest": "Refreshed desktop-dark and phone-dark screenshots opened; reviewer scored placeholder resolved."
+    },
+    {
+      "id": "A2",
+      "severity": "major",
+      "state": "fixed",
+      "location": "File editor keyboard focus",
+      "evidence": "Removed inline outline suppression and added focus-visible. Browser measured active TEXTAREA, focusVisible true, outline rgb(32,32,32) solid 2px; updated /tmp/rain-ui-review/editor-focus.png opened.",
+      "retest": "Keyboard Tab modality, active TEXTAREA, focusVisible true, computed 2px ink outline; editor-focus.png opened and confirmed."
+    }
+  ],
+  "limits": [
+    "Physical phone and Android package are not tested in this design pass.",
+    "Remote SSH hosts require account configuration; the rendered review uses the local host."
+  ]
+}

@@ -1,0 +1,999 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-29T20:37:36.562652+00:00",
+  "title": "Design System: RAIN",
+  "extensions": {
+    "colorMeta": {
+      "dark-primary-ink": {
+        "role": "primary",
+        "displayName": "Dark Primary Ink",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-accent-hover": {
+        "role": "primary",
+        "displayName": "Dark Accent Hover",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-bg-canvas": {
+        "role": "neutral",
+        "displayName": "Dark Bg Canvas",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-bg-surface": {
+        "role": "neutral",
+        "displayName": "Dark Bg Surface",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-bg-subtle": {
+        "role": "neutral",
+        "displayName": "Dark Bg Subtle",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-bg-elevated": {
+        "role": "neutral",
+        "displayName": "Dark Bg Elevated",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-bg-hover": {
+        "role": "neutral",
+        "displayName": "Dark Bg Hover",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-bg-active": {
+        "role": "neutral",
+        "displayName": "Dark Bg Active",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-border-subtle": {
+        "role": "neutral",
+        "displayName": "Dark Border Subtle",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-border-default": {
+        "role": "neutral",
+        "displayName": "Dark Border Default",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-border-strong": {
+        "role": "neutral",
+        "displayName": "Dark Border Strong",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-text-primary": {
+        "role": "neutral",
+        "displayName": "Dark Text Primary",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-text-secondary": {
+        "role": "neutral",
+        "displayName": "Dark Text Secondary",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-text-muted": {
+        "role": "neutral",
+        "displayName": "Dark Text Muted",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-accent-primary": {
+        "role": "primary",
+        "displayName": "Dark Accent Primary",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-accent-subtle": {
+        "role": "primary",
+        "displayName": "Dark Accent Subtle",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-accent-text": {
+        "role": "primary",
+        "displayName": "Dark Accent Text",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-bubble-human-bg": {
+        "role": "neutral",
+        "displayName": "Dark Bubble Human Bg",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-bubble-human-border": {
+        "role": "neutral",
+        "displayName": "Dark Bubble Human Border",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-primary-ink": {
+        "role": "primary",
+        "displayName": "Light Primary Ink",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-bg-canvas": {
+        "role": "neutral",
+        "displayName": "Light Bg Canvas",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-bg-surface": {
+        "role": "neutral",
+        "displayName": "Light Bg Surface",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-bg-subtle": {
+        "role": "neutral",
+        "displayName": "Light Bg Subtle",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-bg-elevated": {
+        "role": "neutral",
+        "displayName": "Light Bg Elevated",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-bg-hover": {
+        "role": "neutral",
+        "displayName": "Light Bg Hover",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-bg-active": {
+        "role": "neutral",
+        "displayName": "Light Bg Active",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-border-subtle": {
+        "role": "neutral",
+        "displayName": "Light Border Subtle",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-border-default": {
+        "role": "neutral",
+        "displayName": "Light Border Default",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-border-strong": {
+        "role": "neutral",
+        "displayName": "Light Border Strong",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-text-primary": {
+        "role": "neutral",
+        "displayName": "Light Text Primary",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-text-secondary": {
+        "role": "neutral",
+        "displayName": "Light Text Secondary",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-text-muted": {
+        "role": "neutral",
+        "displayName": "Light Text Muted",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-accent-primary": {
+        "role": "primary",
+        "displayName": "Light Accent Primary",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-accent-hover": {
+        "role": "primary",
+        "displayName": "Light Accent Hover",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-accent-subtle": {
+        "role": "primary",
+        "displayName": "Light Accent Subtle",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-accent-text": {
+        "role": "primary",
+        "displayName": "Light Accent Text",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-bubble-human-bg": {
+        "role": "neutral",
+        "displayName": "Light Bubble Human Bg",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "light-bubble-human-border": {
+        "role": "neutral",
+        "displayName": "Light Bubble Human Border",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      },
+      "dark-danger-surface": {
+        "role": "semantic",
+        "displayName": "Dark Danger Surface",
+        "tonalRamp": [
+          "oklch(15% 0.08856 26.04)",
+          "oklch(26% 0.08856 26.04)",
+          "oklch(38% 0.08856 26.04)",
+          "oklch(49% 0.08856 26.04)",
+          "oklch(61% 0.08856 26.04)",
+          "oklch(72% 0.08856 26.04)",
+          "oklch(84% 0.08856 26.04)",
+          "oklch(95% 0.08856 26.04)"
+        ]
+      },
+      "dark-danger-border": {
+        "role": "semantic",
+        "displayName": "Dark Danger Border",
+        "tonalRamp": [
+          "oklch(15% 0.16132 26.90)",
+          "oklch(26% 0.16132 26.90)",
+          "oklch(38% 0.16132 26.90)",
+          "oklch(49% 0.16132 26.90)",
+          "oklch(61% 0.16132 26.90)",
+          "oklch(72% 0.16132 26.90)",
+          "oklch(84% 0.16132 26.90)",
+          "oklch(95% 0.16132 26.90)"
+        ]
+      },
+      "dark-danger-text": {
+        "role": "semantic",
+        "displayName": "Dark Danger Text",
+        "tonalRamp": [
+          "oklch(15% 0.10349 19.57)",
+          "oklch(26% 0.10349 19.57)",
+          "oklch(38% 0.10349 19.57)",
+          "oklch(49% 0.10349 19.57)",
+          "oklch(61% 0.10349 19.57)",
+          "oklch(72% 0.10349 19.57)",
+          "oklch(84% 0.10349 19.57)",
+          "oklch(95% 0.10349 19.57)"
+        ]
+      },
+      "dark-danger-btn": {
+        "role": "semantic",
+        "displayName": "Dark Danger Btn",
+        "tonalRamp": [
+          "oklch(15% 0.21516 27.33)",
+          "oklch(26% 0.21516 27.33)",
+          "oklch(38% 0.21516 27.33)",
+          "oklch(49% 0.21516 27.33)",
+          "oklch(61% 0.21516 27.33)",
+          "oklch(72% 0.21516 27.33)",
+          "oklch(84% 0.21516 27.33)",
+          "oklch(95% 0.21516 27.33)"
+        ]
+      },
+      "dark-warning-surface": {
+        "role": "semantic",
+        "displayName": "Dark Warning Surface",
+        "tonalRamp": [
+          "oklch(15% 0.07420 45.64)",
+          "oklch(26% 0.07420 45.64)",
+          "oklch(38% 0.07420 45.64)",
+          "oklch(49% 0.07420 45.64)",
+          "oklch(61% 0.07420 45.64)",
+          "oklch(72% 0.07420 45.64)",
+          "oklch(84% 0.07420 45.64)",
+          "oklch(95% 0.07420 45.64)"
+        ]
+      },
+      "dark-warning-border": {
+        "role": "semantic",
+        "displayName": "Dark Warning Border",
+        "tonalRamp": [
+          "oklch(15% 0.12470 46.20)",
+          "oklch(26% 0.12470 46.20)",
+          "oklch(38% 0.12470 46.20)",
+          "oklch(49% 0.12470 46.20)",
+          "oklch(61% 0.12470 46.20)",
+          "oklch(72% 0.12470 46.20)",
+          "oklch(84% 0.12470 46.20)",
+          "oklch(95% 0.12470 46.20)"
+        ]
+      },
+      "dark-warning-text": {
+        "role": "semantic",
+        "displayName": "Dark Warning Text",
+        "tonalRamp": [
+          "oklch(15% 0.15342 91.61)",
+          "oklch(26% 0.15342 91.61)",
+          "oklch(38% 0.15342 91.61)",
+          "oklch(49% 0.15342 91.61)",
+          "oklch(61% 0.15342 91.61)",
+          "oklch(72% 0.15342 91.61)",
+          "oklch(84% 0.15342 91.61)",
+          "oklch(95% 0.15342 91.61)"
+        ]
+      },
+      "dark-success-surface": {
+        "role": "semantic",
+        "displayName": "Dark Success Surface",
+        "tonalRamp": [
+          "oklch(15% 0.01376 145.20)",
+          "oklch(26% 0.01376 145.20)",
+          "oklch(38% 0.01376 145.20)",
+          "oklch(49% 0.01376 145.20)",
+          "oklch(61% 0.01376 145.20)",
+          "oklch(72% 0.01376 145.20)",
+          "oklch(84% 0.01376 145.20)",
+          "oklch(95% 0.01376 145.20)"
+        ]
+      },
+      "dark-success-border": {
+        "role": "semantic",
+        "displayName": "Dark Success Border",
+        "tonalRamp": [
+          "oklch(15% 0.04350 144.88)",
+          "oklch(26% 0.04350 144.88)",
+          "oklch(38% 0.04350 144.88)",
+          "oklch(49% 0.04350 144.88)",
+          "oklch(61% 0.04350 144.88)",
+          "oklch(72% 0.04350 144.88)",
+          "oklch(84% 0.04350 144.88)",
+          "oklch(95% 0.04350 144.88)"
+        ]
+      },
+      "dark-success-text": {
+        "role": "semantic",
+        "displayName": "Dark Success Text",
+        "tonalRamp": [
+          "oklch(15% 0.03314 145.27)",
+          "oklch(26% 0.03314 145.27)",
+          "oklch(38% 0.03314 145.27)",
+          "oklch(49% 0.03314 145.27)",
+          "oklch(61% 0.03314 145.27)",
+          "oklch(72% 0.03314 145.27)",
+          "oklch(84% 0.03314 145.27)",
+          "oklch(95% 0.03314 145.27)"
+        ]
+      },
+      "light-danger-surface": {
+        "role": "semantic",
+        "displayName": "Light Danger Surface",
+        "tonalRamp": [
+          "oklch(15% 0.01295 17.38)",
+          "oklch(26% 0.01295 17.38)",
+          "oklch(38% 0.01295 17.38)",
+          "oklch(49% 0.01295 17.38)",
+          "oklch(61% 0.01295 17.38)",
+          "oklch(72% 0.01295 17.38)",
+          "oklch(84% 0.01295 17.38)",
+          "oklch(95% 0.01295 17.38)"
+        ]
+      },
+      "light-danger-border": {
+        "role": "semantic",
+        "displayName": "Light Danger Border",
+        "tonalRamp": [
+          "oklch(15% 0.05926 18.33)",
+          "oklch(26% 0.05926 18.33)",
+          "oklch(38% 0.05926 18.33)",
+          "oklch(49% 0.05926 18.33)",
+          "oklch(61% 0.05926 18.33)",
+          "oklch(72% 0.05926 18.33)",
+          "oklch(84% 0.05926 18.33)",
+          "oklch(95% 0.05926 18.33)"
+        ]
+      },
+      "light-danger-text": {
+        "role": "semantic",
+        "displayName": "Light Danger Text",
+        "tonalRamp": [
+          "oklch(15% 0.16132 26.90)",
+          "oklch(26% 0.16132 26.90)",
+          "oklch(38% 0.16132 26.90)",
+          "oklch(49% 0.16132 26.90)",
+          "oklch(61% 0.16132 26.90)",
+          "oklch(72% 0.16132 26.90)",
+          "oklch(84% 0.16132 26.90)",
+          "oklch(95% 0.16132 26.90)"
+        ]
+      },
+      "light-danger-btn": {
+        "role": "semantic",
+        "displayName": "Light Danger Btn",
+        "tonalRamp": [
+          "oklch(15% 0.21516 27.33)",
+          "oklch(26% 0.21516 27.33)",
+          "oklch(38% 0.21516 27.33)",
+          "oklch(49% 0.21516 27.33)",
+          "oklch(61% 0.21516 27.33)",
+          "oklch(72% 0.21516 27.33)",
+          "oklch(84% 0.21516 27.33)",
+          "oklch(95% 0.21516 27.33)"
+        ]
+      },
+      "light-warning-surface": {
+        "role": "semantic",
+        "displayName": "Light Warning Surface",
+        "tonalRamp": [
+          "oklch(15% 0.02140 95.28)",
+          "oklch(26% 0.02140 95.28)",
+          "oklch(38% 0.02140 95.28)",
+          "oklch(49% 0.02140 95.28)",
+          "oklch(61% 0.02140 95.28)",
+          "oklch(72% 0.02140 95.28)",
+          "oklch(84% 0.02140 95.28)",
+          "oklch(95% 0.02140 95.28)"
+        ]
+      },
+      "light-warning-border": {
+        "role": "semantic",
+        "displayName": "Light Warning Border",
+        "tonalRamp": [
+          "oklch(15% 0.11513 95.75)",
+          "oklch(26% 0.11513 95.75)",
+          "oklch(38% 0.11513 95.75)",
+          "oklch(49% 0.11513 95.75)",
+          "oklch(61% 0.11513 95.75)",
+          "oklch(72% 0.11513 95.75)",
+          "oklch(84% 0.11513 95.75)",
+          "oklch(95% 0.11513 95.75)"
+        ]
+      },
+      "light-warning-text": {
+        "role": "semantic",
+        "displayName": "Light Warning Text",
+        "tonalRamp": [
+          "oklch(15% 0.12470 46.20)",
+          "oklch(26% 0.12470 46.20)",
+          "oklch(38% 0.12470 46.20)",
+          "oklch(49% 0.12470 46.20)",
+          "oklch(61% 0.12470 46.20)",
+          "oklch(72% 0.12470 46.20)",
+          "oklch(84% 0.12470 46.20)",
+          "oklch(95% 0.12470 46.20)"
+        ]
+      },
+      "light-success-surface": {
+        "role": "semantic",
+        "displayName": "Light Success Surface",
+        "tonalRamp": [
+          "oklch(15% 0.00848 145.51)",
+          "oklch(26% 0.00848 145.51)",
+          "oklch(38% 0.00848 145.51)",
+          "oklch(49% 0.00848 145.51)",
+          "oklch(61% 0.00848 145.51)",
+          "oklch(72% 0.00848 145.51)",
+          "oklch(84% 0.00848 145.51)",
+          "oklch(95% 0.00848 145.51)"
+        ]
+      },
+      "light-success-border": {
+        "role": "semantic",
+        "displayName": "Light Success Border",
+        "tonalRamp": [
+          "oklch(15% 0.02625 145.34)",
+          "oklch(26% 0.02625 145.34)",
+          "oklch(38% 0.02625 145.34)",
+          "oklch(49% 0.02625 145.34)",
+          "oklch(61% 0.02625 145.34)",
+          "oklch(72% 0.02625 145.34)",
+          "oklch(84% 0.02625 145.34)",
+          "oklch(95% 0.02625 145.34)"
+        ]
+      },
+      "light-success-text": {
+        "role": "semantic",
+        "displayName": "Light Success Text",
+        "tonalRamp": [
+          "oklch(15% 0.04350 144.88)",
+          "oklch(26% 0.04350 144.88)",
+          "oklch(38% 0.04350 144.88)",
+          "oklch(49% 0.04350 144.88)",
+          "oklch(61% 0.04350 144.88)",
+          "oklch(72% 0.04350 144.88)",
+          "oklch(84% 0.04350 144.88)",
+          "oklch(95% 0.04350 144.88)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Task heading",
+        "purpose": "Primary task heading; reduces to 22px at 600px."
+      },
+      "ascii-wordmark": {
+        "displayName": "ASCII RAIN",
+        "purpose": "Chrome identity only; reduces to 6px at 600px."
+      }
+    },
+    "shadows": [
+      {
+        "name": "modal",
+        "value": "0 12px 40px #0003",
+        "purpose": "Dialog overlay."
+      },
+      {
+        "name": "toast",
+        "value": "0 4px 16px #0002",
+        "purpose": "Transient notification."
+      },
+      {
+        "name": "legacy-card-light",
+        "value": "0 1px 3px rgba(0, 0, 0, 0.05)",
+        "purpose": "Retained token; explicitly not the machine-row treatment."
+      }
+    ],
+    "motion": [
+      {
+        "name": "transition-fast",
+        "value": "0.15s ease",
+        "purpose": "Existing CSS transition token."
+      },
+      {
+        "name": "button-background",
+        "value": "background-color .15s",
+        "purpose": "Workbench button fill changes."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "transition: none !important; animation: none !important; scroll-behavior: auto !important",
+        "purpose": "Applies under prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "desktop-rail",
+        "value": "961px"
+      },
+      {
+        "name": "compact-navigation-max",
+        "value": "960px"
+      },
+      {
+        "name": "single-column-launch-max",
+        "value": "768px"
+      },
+      {
+        "name": "phone-max",
+        "value": "600px"
+      }
+    ],
+    "focus": {
+      "default": "2px solid var(--text-primary); outline-offset: 3px",
+      "agent-workbench": "2px solid var(--accent-primary); outline-offset: 3px",
+      "file-editor": "Verified independently: active TEXTAREA, focusVisible true, rgb(32, 32, 32) solid 2px outline in light mode."
+    },
+    "sourceFiles": [
+      "apps/rain-client/src/styles/tokens.css",
+      "apps/rain-client/src/styles/workbench.css",
+      "apps/rain-client/src/components/Header.tsx",
+      "apps/rain-client/src/components/RainIdentity.tsx"
+    ],
+    "limits": [
+      "Static component specimens do not exercise backend operations.",
+      "No physical-phone, Android-package, or configured-SSH review by this documentation pass.",
+      "No invented user screenshot approval."
+    ],
+    "rampNote": "Tonal ramps are synthesized display metadata, not additional application tokens. Achromatic ramps keep zero chroma; semantic ramps hold source OKLCH hue and chroma across lightness steps and may require display gamut mapping."
+  },
+  "components": [
+    {
+      "name": "Primary action",
+      "kind": "button",
+      "refersTo": "button-primary-dark",
+      "description": "Primary action pattern extracted from the implemented workbench.",
+      "html": "<button class=\"ds-primary\">Launch CLI</button>",
+      "css": ".ds-primary{font-family:var(--font-sans,Arial,sans-serif);font-size:13px;color:var(--text-primary,#ededed);display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:9px 14px;border:1px solid var(--border-default,#3c3c3c);border-radius:4px;font-weight:500;background:transparent;cursor:pointer;transition:background-color .15s;background:var(--accent-primary,#e2e2e2);border-color:var(--accent-primary,#e2e2e2);color:var(--primary-ink,#1b1b1b)}.ds-primary:hover{background:var(--accent-hover,#fff)}.ds-primary:focus-visible{outline:2px solid var(--text-primary,#ededed);outline-offset:3px}.ds-primary:disabled{opacity:.45;cursor:not-allowed}"
+    },
+    {
+      "name": "Outlined action",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Outlined action pattern extracted from the implemented workbench.",
+      "html": "<button class=\"ds-outline\">Refresh tools</button>",
+      "css": ".ds-outline{font-family:var(--font-sans,Arial,sans-serif);font-size:13px;color:var(--text-primary,#ededed);display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:9px 14px;border:1px solid var(--border-default,#3c3c3c);border-radius:4px;font-weight:500;background:transparent;cursor:pointer;transition:background-color .15s;}.ds-outline:hover{background:var(--bg-hover,#353535)}.ds-outline:focus-visible{outline:2px solid var(--text-primary,#ededed);outline-offset:3px}.ds-outline:disabled{opacity:.45;cursor:not-allowed}"
+    },
+    {
+      "name": "Message field",
+      "kind": "input",
+      "refersTo": "input-message",
+      "description": "Message field pattern extracted from the implemented workbench.",
+      "html": "<input class=\"ds-field\" aria-label=\"Message\" placeholder=\"Send a message\u2026\">",
+      "css": ".ds-field{font-family:var(--font-sans,Arial,sans-serif);font-size:13px;color:var(--text-primary,#ededed);min-height:44px;padding:10px 12px;background:var(--bg-canvas,#141414);border:1px solid var(--border-strong,#666);border-radius:4px;font-size:14px}.ds-field::placeholder{color:var(--text-muted,#a6a6a6);opacity:1}.ds-field:focus{border-color:var(--accent-primary,#e2e2e2)}.ds-field:focus-visible{outline:2px solid var(--text-primary,#ededed);outline-offset:3px}"
+    },
+    {
+      "name": "Desktop navigation item",
+      "kind": "nav",
+      "refersTo": "nav-desktop",
+      "description": "Desktop navigation item pattern extracted from the implemented workbench.",
+      "html": "<button class=\"ds-nav\" aria-current=\"page\">Machines</button>",
+      "css": ".ds-nav{font-family:var(--font-sans,Arial,sans-serif);font-size:13px;color:var(--text-primary,#ededed);height:48px;padding:0 16px;border:0;border-radius:4px;font-size:14px;font-weight:500;background:var(--bg-active,#3b3b3b);cursor:pointer}.ds-nav:hover{background:var(--bg-hover,#353535)}.ds-nav:focus-visible{outline:2px solid var(--text-primary,#ededed);outline-offset:3px}"
+    },
+    {
+      "name": "Machine inventory row",
+      "kind": "card",
+      "refersTo": "machine-row",
+      "description": "Machine inventory row pattern extracted from the implemented workbench.",
+      "html": "<article class=\"ds-machine\"><strong>Local machine</strong><p>Agent sessions and filesystem</p></article>",
+      "css": ".ds-machine{font-family:var(--font-sans,Arial,sans-serif);font-size:13px;color:var(--text-primary,#ededed);padding:24px 0;background:transparent;border-bottom:1px solid var(--border-default,#3c3c3c);border-radius:0;box-shadow:none}.ds-machine strong{font-size:14px;font-weight:500}.ds-machine p{color:var(--text-secondary,#bdbdbd);font-size:13px;margin:8px 0 0}"
+    },
+    {
+      "name": "Square status label",
+      "kind": "chip",
+      "refersTo": "status-label",
+      "description": "Square status label pattern extracted from the implemented workbench.",
+      "html": "<span class=\"ds-status\">Running</span>",
+      "css": ".ds-status{font-family:var(--font-sans,Arial,sans-serif);font-size:13px;color:var(--text-primary,#ededed);background:transparent;color:var(--text-secondary,#bdbdbd);border:0;border-radius:0;padding:0}"
+    },
+    {
+      "name": "Dialog surface",
+      "kind": "custom",
+      "refersTo": "modal",
+      "description": "Dialog surface pattern extracted from the implemented workbench.",
+      "html": "<section class=\"ds-modal\" aria-label=\"Connection dialog example\"><h2>Connect device</h2><p>Review the selected machine before connecting.</p></section>",
+      "css": ".ds-modal{font-family:var(--font-sans,Arial,sans-serif);font-size:13px;color:var(--text-primary,#ededed);background:var(--bg-surface,#1b1b1b);padding:24px;border-radius:8px;max-width:calc(100vw - 32px);box-shadow:0 12px 40px #0003}.ds-modal h2{font-size:18px;font-weight:500;margin:0 0 16px}.ds-modal p{color:var(--text-secondary,#bdbdbd);margin:0}"
+    }
+  ],
+  "narrative": {
+    "northStar": "RAIN workbench",
+    "overview": "RAIN is a neutral Material-like developer workbench for launching and coordinating CLI agents. Paper and graphite surfaces, familiar system typography, and restrained rectangular controls keep machine context and task actions legible. The existing React/Tauri implementation uses plain CSS; this document captures that system rather than prescribing a component-framework migration.\n\nDesktop is the primary workspace; smaller screens remain remote controls. The ASCII RAIN wordmark and matching monogram belong in application chrome. Ordinary task labels stay readable sans serif. The North Star names the existing workbench direction; it is not a separately approved brand concept.",
+    "keyCharacteristics": [
+      "Neutral light and dark themes.",
+      "Visible machine scope for execution and filesystem tasks.",
+      "Flat task regions and compact rectangular controls.",
+      "ASCII identity; system sans for tasks and mono for technical content."
+    ],
+    "rules": [
+      {
+        "name": "Scope Continuity",
+        "body": "Keep the selected machine visible in launch and file tasks. Changing it clears the explorer and editor; do not imply a local write when the selected filesystem is remote.",
+        "section": "layout"
+      },
+      {
+        "name": "Neutral Actions",
+        "body": "Use monochrome emphasis for primary actions; reserve semantic color for meaningful status, warning, and destructive states.",
+        "section": "colors"
+      },
+      {
+        "name": "Flat Workbench",
+        "body": "Use tonal surfaces and dividers for ordinary task structure; reserve pronounced shadows for overlays.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do preserve both theme mappings when adding a surface.",
+      "Do keep selected machine and path context legible before launch, edit, save, or terminal actions.",
+      "Do use system sans for task labels and mono for paths, terminal content, and ASCII identity.",
+      "Do retain visible keyboard focus and explicit placeholder contrast in both themes.",
+      "Do keep groups as conversation-routing and workflow records; agent sessions have independent lifecycles."
+    ],
+    "donts": [
+      "Don't introduce gradients, blue hues, or pill controls.",
+      "Don't turn ordinary controls and labels into ASCII art.",
+      "Don't wrap every task section in a raised card.",
+      "Don't hide machine context to gain space.",
+      "Don't treat screenshot review as physical-device, SSH, or comprehensive accessibility certification."
+    ]
+  }
+}
