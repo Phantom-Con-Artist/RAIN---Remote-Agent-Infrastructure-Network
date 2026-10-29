@@ -414,7 +414,7 @@ async fn handle_request(
     }
 
     // 1. Root / UI / Static Assets
-    if method == Method::GET && (path == "/" || path == "/index.html") {
+    if (method == Method::GET || method == Method::HEAD) && (path == "/" || path == "/index.html") {
         let dist_index = std::path::Path::new("apps/rain-client/dist/index.html");
         if dist_index.exists() {
             if let Ok(content) = std::fs::read_to_string(dist_index) {
@@ -424,7 +424,7 @@ async fn handle_request(
         return Ok(html_response(StatusCode::OK, render_hub_portal_html()));
     }
 
-    if method == Method::GET && path.starts_with("/assets/") {
+    if (method == Method::GET || method == Method::HEAD) && path.starts_with("/assets/") {
         let asset_path = std::path::Path::new("apps/rain-client/dist").join(path.trim_start_matches('/'));
         if asset_path.exists() {
             let mime = if path.ends_with(".js") {
