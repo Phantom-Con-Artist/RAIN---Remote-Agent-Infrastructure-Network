@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct ChatStore {
+    supervisor: crate::AgentSupervisor,
     conversations: Arc<RwLock<HashMap<uuid::Uuid, Conversation>>>,
     messages: Arc<RwLock<HashMap<uuid::Uuid, Vec<ChatMessage>>>>,
     sessions: Arc<RwLock<HashMap<String, AgentSession>>>,
@@ -17,8 +18,11 @@ pub struct ChatStore {
 }
 
 impl ChatStore {
-    pub fn new() -> Self {
+    pub fn new() -> Self { Self::with_supervisor(crate::AgentSupervisor::new()) }
+
+    pub fn with_supervisor(supervisor: crate::AgentSupervisor) -> Self {
         Self {
+            supervisor,
             conversations: Arc::new(RwLock::new(HashMap::new())),
             messages: Arc::new(RwLock::new(HashMap::new())),
             sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -39,8 +43,16 @@ impl ChatStore {
     }
 
     pub async fn list_sessions(&self) -> Vec<AgentSession> {
-        let lock = self.sessions.read().await;
-        lock.values().cloned().collect()
+        self.supervisor.list_agents().await.into_iter().map(|a| AgentSession {
+            id: a.id.to_string(), name: a.name, provider: a.provider,
+            machine_name: sysinfo::System::host_name().unwrap_or_default(), cwd: a.cwd,
+            subagents: vec![], state: match a.status {
+                rain_protocol::AgentStatus::Running => rain_protocol::SessionState::Online,
+                rain_protocol::AgentStatus::Completed => rain_protocol::SessionState::Completed,
+                rain_protocol::AgentStatus::Terminated => rain_protocol::SessionState::Stopped,
+                _ => rain_protocol::SessionState::Error,
+            }
+        }).collect()
     }
 
     pub async fn list_jobs(&self) -> Vec<JobDelegation> {
@@ -148,7 +160,14 @@ impl ChatStore {
         }
 
         let mut msg_lock = self.messages.write().await;
-        msg_lock.remove(&conv_id);
+        let removed = msg_lock.remove(&conv_id).unwrap_or_default();
+        let mut jobs = self.jobs.write().await;
+        for id in removed.iter().filter_map(|m| m.job_delegation.as_ref().map(|j| j.id)) {
+            // A workflow record shared with another conversation still belongs to that conversation.
+            if !msg_lock.values().flatten().any(|m| m.job_delegation.as_ref().map(|j| j.id) == Some(id)) {
+                jobs.remove(&id);
+            }
+        }
         Ok(())
     }
 
@@ -167,7 +186,7 @@ impl ChatStore {
                 sender_id: "system".to_string(),
                 sender_name: "RAIN System".to_string(),
                 sender_type: SenderType::System,
-                text: "🛑 Group session stopped by admin. Background agent tasks suspended.".to_string(),
+                text: "Group messaging paused. Agent sessions continue running independently.".to_string(),
                 status: MessageDeliveryStatus::Read,
                 attachments: vec![],
                 job_delegation: None,
@@ -218,6 +237,31 @@ impl ChatStore {
             return Err("Cannot send messages to a stopped conversation".to_string());
         }
 
+        let conversation = self.conversations.read().await.get(&conv_id).cloned().ok_or("Conversation missing")?;
+        let mut recipients: Vec<String> = conversation.participant_ids.into_iter().filter(|id| id != "human-user").collect();
+        if let Some(target) = target_session {
+            if !recipients.contains(&target) { return Err("Target is not a conversation member".into()); }
+            recipients.retain(|id| id == &target);
+        }
+        let mut input = text.as_str();
+        if let Some(rest) = input.strip_prefix('@') {
+            if let Some((mention, body)) = rest.split_once(' ') {
+                if mention != "all" {
+                    let agents = self.supervisor.list_agents().await;
+                    let selected: Vec<_> = agents.iter().filter(|a| (a.name == mention || a.id.to_string() == mention) && recipients.contains(&a.id.to_string())).collect();
+                    if selected.len() != 1 { return Err("Mention must uniquely identify a group member".into()); }
+                    recipients.retain(|id| id == &selected[0].id.to_string());
+                }
+                input = body;
+            }
+        }
+        if recipients.is_empty() { return Err("Add an active agent to this conversation first".into()); }
+        for recipient in &recipients {
+            let id = uuid::Uuid::parse_str(recipient).map_err(|_| "Invalid session ID")?;
+            if self.supervisor.get_agent(id).await.map(|a| a.status != rain_protocol::AgentStatus::Running).unwrap_or(true) {
+                return Err("A selected session is no longer running".into());
+            }
+        }
         let msg_id = uuid::Uuid::new_v4();
         let human_msg = ChatMessage {
             id: msg_id,
@@ -226,7 +270,7 @@ impl ChatStore {
             sender_name: "You".to_string(),
             sender_type: SenderType::Human,
             text: text.clone(),
-            status: MessageDeliveryStatus::Delivered,
+            status: MessageDeliveryStatus::Sent,
             attachments: atts.clone(),
             job_delegation: None,
             timestamp: chrono::Utc::now(),
@@ -251,55 +295,33 @@ impl ChatStore {
             }
         }
 
-        let store_clone = self.clone();
-        tokio::spawn(async move {
-            store_clone.process_agent_reply(conv_id, text, target_session, atts).await;
-        });
-
+        for recipient in recipients {
+            let id = uuid::Uuid::parse_str(&recipient).map_err(|_| "Invalid session ID")?;
+            self.supervisor.send_input(id, input).await?;
+        }
+        let mut human_msg = human_msg;
+        human_msg.status = MessageDeliveryStatus::Delivered;
+        if let Some(messages) = self.messages.write().await.get_mut(&conv_id) {
+            if let Some(message) = messages.iter_mut().find(|m| m.id == human_msg.id) { message.status = MessageDeliveryStatus::Delivered; }
+        }
         Ok(human_msg)
     }
 
-    async fn process_agent_reply(
-        &self,
-        conv_id: uuid::Uuid,
-        prompt: String,
-        target_session: Option<String>,
-        incoming_attachments: Vec<ChatAttachment>,
-    ) {
-        let host_name = sysinfo::System::host_name().unwrap_or_else(|| "RAIN-Node".to_string());
-        let agent_name = target_session.unwrap_or_else(|| format!("Node Agent ({})", host_name));
-
-        let reply_text = if !incoming_attachments.is_empty() {
-            format!("Received {} attachment(s). Files saved to workspace.", incoming_attachments.len())
-        } else {
-            format!("Instruction logged on {}: \"{}\". (Ready for Agent CLI hookup).", host_name, prompt)
+    pub async fn record_event(&self, event: rain_protocol::AgentEvent) {
+        let (id, text) = match event {
+            rain_protocol::AgentEvent::Output { agent_id, stream, line } => (agent_id, if stream == "stderr" { format!("[stderr] {}", line) } else { line }),
+            rain_protocol::AgentEvent::StatusChanged { agent_id, status, exit_code } => (agent_id, format!("Session {:?} (exit {:?})", status, exit_code)),
         };
-
-        let reply_msg = ChatMessage {
-            id: uuid::Uuid::new_v4(),
-            conversation_id: conv_id,
-            sender_id: "node-agent".to_string(),
-            sender_name: agent_name.clone(),
-            sender_type: SenderType::Agent,
-            text: reply_text.clone(),
-            status: MessageDeliveryStatus::Delivered,
-            attachments: vec![],
-            job_delegation: None,
-            timestamp: chrono::Utc::now(),
-        };
-
-        {
-            let mut lock = self.messages.write().await;
-            let list = lock.entry(conv_id).or_default();
-            list.push(reply_msg);
-        }
-
-        {
-            let mut conv_lock = self.conversations.write().await;
-            if let Some(c) = conv_lock.get_mut(&conv_id) {
-                c.last_message = Some(format!("{}: {}", agent_name, reply_text));
-                c.last_message_time = Some(chrono::Utc::now());
-            }
+        let agent = self.supervisor.get_agent(id).await;
+        let name = agent.map(|a| a.name).unwrap_or_else(|| id.to_string());
+        let mut conversations = self.conversations.write().await;
+        let mut messages = self.messages.write().await;
+        for conv in conversations.values_mut().filter(|c| c.participant_ids.contains(&id.to_string())) {
+            messages.entry(conv.id).or_default().push(ChatMessage {
+                id: uuid::Uuid::new_v4(), conversation_id: conv.id, sender_id: id.to_string(), sender_name: name.clone(), sender_type: SenderType::Agent,
+                text: text.clone(), status: MessageDeliveryStatus::Delivered, attachments: vec![], job_delegation: None, timestamp: chrono::Utc::now(),
+            });
+            conv.last_message = Some(text.clone()); conv.last_message_time = Some(chrono::Utc::now());
         }
     }
 

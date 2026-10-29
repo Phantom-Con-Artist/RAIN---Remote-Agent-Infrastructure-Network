@@ -67,11 +67,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let store = Arc::new(InMemoryStore::new());
     let remote = Arc::new(RemoteManager::new_with_store((*store).clone()));
 
+    let supervisor = Arc::new(AgentSupervisor::new());
+    let chat = Arc::new(ChatStore::with_supervisor((*supervisor).clone()));
+    let mut events = supervisor.subscribe();
+    let chat_events = chat.clone();
+    tokio::spawn(async move {
+        loop { match events.recv().await {
+            Ok(event) => chat_events.record_event(event).await,
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => tracing::warn!("Missed {} agent events", n),
+            Err(_) => break,
+        }}
+    });
     let state = AppState {
         registry: Arc::new(CapabilityRegistry::new()),
-        supervisor: Arc::new(AgentSupervisor::new()),
+        supervisor,
         store: store.clone(),
-        chat: Arc::new(ChatStore::new()),
+        chat,
         remote,
     };
 
