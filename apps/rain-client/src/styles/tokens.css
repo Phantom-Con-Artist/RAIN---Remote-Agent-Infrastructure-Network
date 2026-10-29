@@ -1,0 +1,124 @@
+/* ==========================================================================
+   RAIN Theme & Design System
+   Strict Light & Dark Modes • No Gradients • Architectural Precision
+   ========================================================================== */
+
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, Menlo, Monaco, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --transition-fast: 0.15s ease;
+  --header-height: 52px;
+  --bottom-nav-height: 56px;
+}
+
+/* --------------------------------------------------------------------------
+   DARK THEME (Default)
+   Deep charcoal and slate surfaces, high contrast, zero glow
+   -------------------------------------------------------------------------- */
+[data-theme="dark"] {
+  --bg-canvas: #090b0e;
+  --bg-surface: #11141a;
+  --bg-subtle: #171c24;
+  --bg-elevated: #1e2430;
+  --bg-hover: #262e3d;
+  --bg-active: #2d3647;
+
+  --border-subtle: #1e2430;
+  --border-default: #2a3242;
+  --border-strong: #3d485e;
+
+  --text-primary: #f0f3f8;
+  --text-secondary: #9aa5b8;
+  --text-muted: #647087;
+
+  --accent-primary: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-subtle: #172554;
+  --accent-text: #bfdbfe;
+
+  --danger-surface: #450a0a;
+  --danger-border: #991b1b;
+  --danger-text: #fca5a5;
+  --danger-btn: #dc2626;
+
+  --warning-surface: #451a03;
+  --warning-border: #92400e;
+  --warning-text: #fcd34d;
+
+  --success-surface: #022c22;
+  --success-border: #065f46;
+  --success-text: #6ee7b7;
+
+  --bubble-human-bg: #1e3a5f;
+  --bubble-human-text: #f8fafc;
+  --bubble-human-border: #2b4c7e;
+
+  --bubble-agent-bg: #151922;
+  --bubble-agent-text: #e2e8f0;
+  --bubble-agent-border: #242c3d;
+
+  --bubble-system-bg: #11141a;
+  --bubble-system-text: #94a3b8;
+  --bubble-system-border: #1e2430;
+
+  --card-shadow: none;
+}
+
+/* --------------------------------------------------------------------------
+   LIGHT THEME
+   Studio grey, clean white panels, sharp crisp borders
+   -------------------------------------------------------------------------- */
+[data-theme="light"] {
+  --bg-canvas: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --bg-elevated: #ffffff;
+  --bg-hover: #e2e8f0;
+  --bg-active: #cbd5e1;
+
+  --border-subtle: #e2e8f0;
+  --border-default: #cbd5e1;
+  --border-strong: #94a3b8;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+
+  --accent-primary: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-subtle: #eff6ff;
+  --accent-text: #1e40af;
+
+  --danger-surface: #fef2f2;
+  --danger-border: #fecaca;
+  --danger-text: #991b1b;
+  --danger-btn: #dc2626;
+
+  --warning-surface: #fffbeb;
+  --warning-border: #fde68a;
+  --warning-text: #92400e;
+
+  --success-surface: #ecfdf5;
+  --success-border: #a7f3d0;
+  --success-text: #065f46;
+
+  --bubble-human-bg: #2563eb;
+  --bubble-human-text: #ffffff;
+  --bubble-human-border: #1d4ed8;
+
+  --bubble-agent-bg: #f8fafc;
+  --bubble-agent-text: #0f172a;
+  --bubble-agent-border: #e2e8f0;
+
+  --bubble-system-bg: #f1f5f9;
+  --bubble-system-text: #475569;
+  --bubble-system-border: #e2e8f0;
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
