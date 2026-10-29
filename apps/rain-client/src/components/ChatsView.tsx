@@ -77,10 +77,12 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
     const text = inputText.trim();
     if (!text || isSubmitting || !activeConversationId) return;
 
-    setInputText('');
     setIsSubmitting(true);
     try {
       await onSendMessage(text, targetSessionId === 'all' ? null : targetSessionId, []);
+      setInputText('');
+    } catch {
+      // Keep the draft so a failed delivery can be retried.
     } finally {
       setIsSubmitting(false);
     }
@@ -357,7 +359,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                 }}
               >
                 <option value="all">@All</option>
-                {sessions.map(s => (
+                {sessions.filter(s => activeConv.participant_ids.includes(s.id)).map(s => (
                   <option key={s.id} value={s.id}>
                     @{s.name}
                   </option>
@@ -367,7 +369,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
               <input
                 type="text"
                 className="chat-input-field"
-                placeholder={activeConv.is_active ? 'Message agents or delegate task...' : 'Conversation is paused'}
+                placeholder={activeConv.is_active ? 'Message, @session, or /command…' : 'Conversation is paused'}
                 disabled={!activeConv.is_active || isSubmitting}
                 value={inputText}
                 onChange={e => setInputText(e.target.value)}

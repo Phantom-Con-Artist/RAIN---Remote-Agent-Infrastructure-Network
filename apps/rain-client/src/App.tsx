@@ -1,3 +1,4 @@
+import { AgentWorkbench } from './components/AgentWorkbench';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FiMessageSquare,
@@ -202,6 +203,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     const timer = setInterval(() => {
       loadSessions();
+      loadConversations();
       if (currentTab === 'chats' && activeConversationId) {
         loadMessages(activeConversationId);
       }
@@ -234,6 +236,7 @@ export const App: React.FC = () => {
       await loadConversations();
     } catch (e: any) {
       showToast(`Send failed: ${e.message}`);
+      throw e;
     }
   };
 
@@ -268,7 +271,7 @@ export const App: React.FC = () => {
   };
 
   const handleDeleteConversation = async (id: string) => {
-    if (!window.confirm('Delete this conversation?')) return;
+    if (!window.confirm('Delete this group and its shared workflow? Agent sessions will keep running.')) return;
     try {
       await apiRequest(`/api/v1/conversations/${id}`, { method: 'DELETE' });
       showToast('Conversation deleted');
@@ -442,6 +445,10 @@ export const App: React.FC = () => {
           />
         )}
 
+        {currentTab === 'machines' && <AgentWorkbench sessions={sessions} onRefresh={loadSessions} onOpenChat={async (id) => {
+          const res = await apiRequest<Conversation>('/api/v1/conversations/direct', { method: 'POST', body: JSON.stringify({agent_id: id}) });
+          await loadConversations(); setActiveConversationId(res.data.id); setCurrentTab('chats'); setIsMobileChatOpen(true);
+        }} />}
         {currentTab === 'machines' && (
           <MachinesView
             machines={machines}
