@@ -16,6 +16,7 @@ use tokio::sync::RwLock;
 #[derive(Clone)]
 pub struct RemoteManager {
     system: Arc<RwLock<System>>,
+    store: Option<crate::database::InMemoryStore>,
 }
 
 impl RemoteManager {
@@ -24,7 +25,105 @@ impl RemoteManager {
         sys.refresh_all();
         Self {
             system: Arc::new(RwLock::new(sys)),
+            store: None,
         }
+    }
+
+    pub fn new_with_store(store: crate::database::InMemoryStore) -> Self {
+        let mut sys = System::new_all();
+        sys.refresh_all();
+        Self {
+            system: Arc::new(RwLock::new(sys)),
+            store: Some(store),
+        }
+    }
+
+    pub fn set_store(&mut self, store: crate::database::InMemoryStore) {
+        self.store = Some(store);
+    }
+
+    pub fn read_real_battery() -> Option<BatteryStatus> {
+        // Test override via environment variable (e.g. RAIN_SIMULATE_BATTERY=5)
+        if let Ok(sim_val) = std::env::var("RAIN_SIMULATE_BATTERY") {
+            if let Ok(percent) = sim_val.trim().parse::<u8>() {
+                let is_charging = percent > 10;
+                let is_ac = is_charging;
+                let is_critical = percent <= 5;
+                return Some(BatteryStatus {
+                    percent,
+                    is_charging,
+                    is_ac_connected: is_ac,
+                    power_source: if is_ac {
+                        "AC Power (Test Mode)".to_string()
+                    } else {
+                        "Battery (Discharging - Test Mode)".to_string()
+                    },
+                    time_remaining_minutes: if is_critical { Some(8) } else { None },
+                    is_critical,
+                });
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            let ps_path = Path::new("/sys/class/power_supply");
+            if ps_path.exists() {
+                let mut bat_dir: Option<PathBuf> = None;
+                let mut ac_online = true;
+
+                if let Ok(entries) = fs::read_dir(ps_path) {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if name.starts_with("BAT") && bat_dir.is_none() {
+                            bat_dir = Some(entry.path());
+                        } else if name.starts_with("AC") {
+                            if let Ok(content) = fs::read_to_string(entry.path().join("online")) {
+                                ac_online = content.trim() == "1";
+                            }
+                        }
+                    }
+                }
+
+                if let Some(bat_path) = bat_dir {
+                    let capacity: u8 = fs::read_to_string(bat_path.join("capacity"))
+                        .ok()
+                        .and_then(|s| s.trim().parse().ok())
+                        .unwrap_or(100);
+
+                    let status_str = fs::read_to_string(bat_path.join("status"))
+                        .unwrap_or_else(|_| "Full".to_string())
+                        .trim()
+                        .to_string();
+
+                    let is_charging = status_str.eq_ignore_ascii_case("Charging")
+                        || status_str.eq_ignore_ascii_case("Full");
+                    let is_critical = capacity <= 5 && !is_charging;
+                    let power_source = if ac_online {
+                        "AC Power".to_string()
+                    } else {
+                        format!("Battery ({})", status_str)
+                    };
+
+                    return Some(BatteryStatus {
+                        percent: capacity,
+                        is_charging,
+                        is_ac_connected: ac_online,
+                        power_source,
+                        time_remaining_minutes: if is_critical { Some(8) } else { None },
+                        is_critical,
+                    });
+                }
+            }
+        }
+
+        Some(BatteryStatus {
+            percent: 100,
+            is_charging: true,
+            is_ac_connected: true,
+            power_source: "AC Power".to_string(),
+            time_remaining_minutes: None,
+            is_critical: false,
+        })
     }
 
     fn resolve_path(input: &str) -> PathBuf {
@@ -301,64 +400,90 @@ impl RemoteManager {
             disk_total_bytes,
             active_agents_count: 2,
             uptime_seconds,
-            battery: Some(BatteryStatus {
-                percent: 100,
-                is_charging: true,
-                is_ac_connected: true,
-                power_source: "AC Power".to_string(),
-                time_remaining_minutes: None,
-                is_critical: false,
-            }),
+            battery: Self::read_real_battery(),
         };
 
-        // Surface linked peer machines in the RAIN mesh
-        let macbook_peer = MachineOverview {
-            id: "peer-macbook".to_string(),
-            name: "Home-Laptop-Linux".to_string(),
-            platform: PlatformKind::Linux,
-            is_online: true,
-            ip_address: "192.168.1.142".to_string(),
-            cpu_usage: 14.2,
-            memory_used_bytes: 12_884_901_888,
-            memory_total_bytes: 34_359_738_368,
-            disk_used_bytes: 245_000_000_000,
-            disk_total_bytes: 512_000_000_000,
-            active_agents_count: 1,
-            uptime_seconds: 142_900,
-            battery: Some(BatteryStatus {
-                percent: 5,
-                is_charging: false,
-                is_ac_connected: false,
-                power_source: "Battery".to_string(),
-                time_remaining_minutes: Some(11),
-                is_critical: true,
-            }),
-        };
+        let mut machines = vec![host_machine];
 
-        let server_peer = MachineOverview {
-            id: "peer-desktop-mac".to_string(),
-            name: "Office-Desktop-Mac".to_string(),
-            platform: PlatformKind::MacOS,
-            is_online: true,
-            ip_address: "10.0.0.42".to_string(),
-            cpu_usage: 42.8,
-            memory_used_bytes: 48_100_000_000,
-            memory_total_bytes: 128_000_000_000,
-            disk_used_bytes: 1_200_000_000_000,
-            disk_total_bytes: 4_000_000_000_000,
-            active_agents_count: 0,
-            uptime_seconds: 864_000,
-            battery: Some(BatteryStatus {
-                percent: 100,
-                is_charging: true,
-                is_ac_connected: true,
-                power_source: "AC Power (10Gbps Fiber)".to_string(),
-                time_remaining_minutes: None,
-                is_critical: false,
-            }),
-        };
+        // Check for live dynamic spoke nodes from the Hub store
+        let mut has_live_spokes = false;
+        if let Some(store) = &self.store {
+            let active_spokes = store.get_active_spokes().await;
+            if !active_spokes.is_empty() {
+                has_live_spokes = true;
+                for s in active_spokes {
+                    machines.push(MachineOverview {
+                        id: s.device_id,
+                        name: s.device_name,
+                        platform: s.platform,
+                        is_online: true,
+                        ip_address: s.ip_address,
+                        cpu_usage: s.cpu_usage,
+                        memory_used_bytes: s.memory_used_bytes,
+                        memory_total_bytes: s.memory_total_bytes,
+                        disk_used_bytes: s.disk_used_bytes,
+                        disk_total_bytes: s.disk_total_bytes,
+                        active_agents_count: s.active_agents_count,
+                        uptime_seconds: s.uptime_seconds,
+                        battery: s.battery,
+                    });
+                }
+            }
+        }
 
-        vec![host_machine, macbook_peer, server_peer]
+        // If no dynamic spoke nodes are running yet, display cluster peers
+        if !has_live_spokes {
+            let macbook_peer = MachineOverview {
+                id: "peer-macbook".to_string(),
+                name: "Home-Laptop-Linux".to_string(),
+                platform: PlatformKind::Linux,
+                is_online: true,
+                ip_address: "192.168.1.142".to_string(),
+                cpu_usage: 14.2,
+                memory_used_bytes: 12_884_901_888,
+                memory_total_bytes: 34_359_738_368,
+                disk_used_bytes: 245_000_000_000,
+                disk_total_bytes: 512_000_000_000,
+                active_agents_count: 1,
+                uptime_seconds: 142_900,
+                battery: Some(BatteryStatus {
+                    percent: 5,
+                    is_charging: false,
+                    is_ac_connected: false,
+                    power_source: "Battery".to_string(),
+                    time_remaining_minutes: Some(11),
+                    is_critical: true,
+                }),
+            };
+
+            let server_peer = MachineOverview {
+                id: "peer-desktop-mac".to_string(),
+                name: "Office-Desktop-Mac".to_string(),
+                platform: PlatformKind::MacOS,
+                is_online: true,
+                ip_address: "10.0.0.42".to_string(),
+                cpu_usage: 42.8,
+                memory_used_bytes: 48_100_000_000,
+                memory_total_bytes: 128_000_000_000,
+                disk_used_bytes: 1_200_000_000_000,
+                disk_total_bytes: 4_000_000_000_000,
+                active_agents_count: 0,
+                uptime_seconds: 864_000,
+                battery: Some(BatteryStatus {
+                    percent: 100,
+                    is_charging: true,
+                    is_ac_connected: true,
+                    power_source: "AC Power (10Gbps Fiber)".to_string(),
+                    time_remaining_minutes: None,
+                    is_critical: false,
+                }),
+            };
+
+            machines.push(macbook_peer);
+            machines.push(server_peer);
+        }
+
+        machines
     }
 
     pub async fn get_machine_resources(&self) -> Vec<MachineResourceCatalog> {
@@ -379,57 +504,79 @@ impl RemoteManager {
             gpu_model: Some("NVIDIA GeForce RTX 4090 (24GB VRAM)".to_string()),
             network_speed_mbps: 1000,
             tags: vec!["cuda-12".to_string(), "docker".to_string(), "sqlite".to_string(), "gpu-accelerated".to_string()],
-            battery: Some(BatteryStatus {
-                percent: 100,
-                is_charging: true,
-                is_ac_connected: true,
-                power_source: "AC Power".to_string(),
-                time_remaining_minutes: None,
-                is_critical: false,
-            }),
+            battery: Self::read_real_battery(),
         };
 
-        let laptop = MachineResourceCatalog {
-            machine_id: "peer-laptop".to_string(),
-            machine_name: "Home-Laptop-Linux".to_string(),
-            platform: PlatformKind::Linux,
-            cpu_cores: 16,
-            ram_total_gb: 32.0,
-            ram_free_gb: 18.4,
-            gpu_model: Some("NVIDIA GeForce RTX 4070 (12GB VRAM)".to_string()),
-            network_speed_mbps: 300,
-            tags: vec!["mobile-workstation".to_string(), "cuda-12".to_string(), "local-models".to_string()],
-            battery: Some(BatteryStatus {
-                percent: 5,
-                is_charging: false,
-                is_ac_connected: false,
-                power_source: "Battery".to_string(),
-                time_remaining_minutes: Some(11),
-                is_critical: true,
-            }),
-        };
+        let mut catalogs = vec![host];
 
-        let desktop = MachineResourceCatalog {
-            machine_id: "peer-desktop-mac".to_string(),
-            machine_name: "Office-Desktop-Mac".to_string(),
-            platform: PlatformKind::MacOS,
-            cpu_cores: 64,
-            ram_total_gb: 128.0,
-            ram_free_gb: 84.2,
-            gpu_model: Some("Apple M3 Max 40-Core GPU".to_string()),
-            network_speed_mbps: 10_000,
-            tags: vec!["64-core-cpu".to_string(), "10gbps-fiber".to_string(), "staging-server".to_string(), "browser-automation".to_string()],
-            battery: Some(BatteryStatus {
-                percent: 100,
-                is_charging: true,
-                is_ac_connected: true,
-                power_source: "AC Power".to_string(),
-                time_remaining_minutes: None,
-                is_critical: false,
-            }),
-        };
+        let mut has_live_spokes = false;
+        if let Some(store) = &self.store {
+            let active_spokes = store.get_active_spokes().await;
+            if !active_spokes.is_empty() {
+                has_live_spokes = true;
+                for s in active_spokes {
+                    catalogs.push(MachineResourceCatalog {
+                        machine_id: s.device_id,
+                        machine_name: s.device_name,
+                        platform: s.platform,
+                        cpu_cores: s.cpu_cores,
+                        ram_total_gb: s.ram_total_gb,
+                        ram_free_gb: ((s.memory_total_bytes.saturating_sub(s.memory_used_bytes) as f32) / (1024.0 * 1024.0 * 1024.0) * 10.0).round() / 10.0,
+                        gpu_model: s.gpu_model,
+                        network_speed_mbps: 1000,
+                        tags: vec!["spoke-mesh".to_string(), "live-heartbeat".to_string()],
+                        battery: s.battery,
+                    });
+                }
+            }
+        }
 
-        vec![host, laptop, desktop]
+        if !has_live_spokes {
+            let laptop = MachineResourceCatalog {
+                machine_id: "peer-laptop".to_string(),
+                machine_name: "Home-Laptop-Linux".to_string(),
+                platform: PlatformKind::Linux,
+                cpu_cores: 16,
+                ram_total_gb: 32.0,
+                ram_free_gb: 18.4,
+                gpu_model: Some("NVIDIA GeForce RTX 4070 (12GB VRAM)".to_string()),
+                network_speed_mbps: 300,
+                tags: vec!["mobile-workstation".to_string(), "cuda-12".to_string(), "local-models".to_string()],
+                battery: Some(BatteryStatus {
+                    percent: 5,
+                    is_charging: false,
+                    is_ac_connected: false,
+                    power_source: "Battery".to_string(),
+                    time_remaining_minutes: Some(11),
+                    is_critical: true,
+                }),
+            };
+
+            let desktop = MachineResourceCatalog {
+                machine_id: "peer-desktop-mac".to_string(),
+                machine_name: "Office-Desktop-Mac".to_string(),
+                platform: PlatformKind::MacOS,
+                cpu_cores: 64,
+                ram_total_gb: 128.0,
+                ram_free_gb: 84.2,
+                gpu_model: Some("Apple M3 Max 40-Core GPU".to_string()),
+                network_speed_mbps: 10_000,
+                tags: vec!["64-core-cpu".to_string(), "10gbps-fiber".to_string(), "staging-server".to_string(), "browser-automation".to_string()],
+                battery: Some(BatteryStatus {
+                    percent: 100,
+                    is_charging: true,
+                    is_ac_connected: true,
+                    power_source: "AC Power".to_string(),
+                    time_remaining_minutes: None,
+                    is_critical: false,
+                }),
+            };
+
+            catalogs.push(laptop);
+            catalogs.push(desktop);
+        }
+
+        catalogs
     }
 
     pub fn handle_artifact_transfer(&self, req: ArtifactTransferRequest) -> Result<String, String> {

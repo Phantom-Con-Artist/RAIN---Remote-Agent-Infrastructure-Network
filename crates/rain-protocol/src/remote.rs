@@ -178,3 +178,29 @@ pub struct PowerFailoverRequest {
     pub git_commit: String,
     pub task_summary: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpokeRegisterRequest {
+    pub device_id: String,
+    pub device_name: String,
+    pub platform: PlatformKind,
+    pub ip_address: String,
+    pub pairing_code: Option<String>,
+    pub cpu_cores: usize,
+    pub ram_total_gb: f32,
+    pub gpu_model: Option<String>,
+    pub battery: Option<BatteryStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpokeHeartbeatRequest {
+    pub device_id: String,
+    pub cpu_usage: f32,
+    pub memory_used_bytes: u64,
+    pub memory_total_bytes: u64,
+    pub disk_used_bytes: u64,
+    pub disk_total_bytes: u64,
+    pub active_agents_count: usize,
+    pub uptime_seconds: u64,
+    pub battery: Option<BatteryStatus>,
+}

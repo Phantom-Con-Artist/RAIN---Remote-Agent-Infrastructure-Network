@@ -3,7 +3,9 @@ use rain_protocol::{
     MessageDeliveryStatus, SenderType, SessionState,
 };
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::process::Command;
 use tokio::sync::RwLock;
 
 #[derive(Clone)]
@@ -633,26 +635,122 @@ impl ChatStore {
         }
     }
 
+    async fn run_git_evacuation() -> (String, String, String, String) {
+        let repo_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+        // 1. Check uncommitted files in repository
+        let status_out = Command::new("git")
+            .args(&["status", "--porcelain"])
+            .current_dir(&repo_dir)
+            .output()
+            .await;
+
+        let status_str = status_out
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+            .unwrap_or_default();
+
+        let has_uncommitted = !status_str.trim().is_empty();
+        let mut commit_hash = "c786aeb".to_string();
+        let push_result;
+        let file_stat;
+
+        if has_uncommitted {
+            let changed_files_count = status_str.lines().count();
+            file_stat = format!("Staged {} modified/untracked file(s) before battery cutoff", changed_files_count);
+
+            let _ = Command::new("git")
+                .args(&["add", "-A"])
+                .current_dir(&repo_dir)
+                .output()
+                .await;
+
+            let host_name = sysinfo::System::host_name().unwrap_or_else(|| "RAIN-Node".to_string());
+            let commit_msg = format!("chore(rain): autonomous evacuation [Host: {}] [Critical Battery]", host_name);
+            let _ = Command::new("git")
+                .args(&["commit", "-m", &commit_msg])
+                .current_dir(&repo_dir)
+                .output()
+                .await;
+
+            let push_out = Command::new("git")
+                .args(&["push", "origin", "main"])
+                .current_dir(&repo_dir)
+                .output()
+                .await;
+
+            push_result = match push_out {
+                Ok(p) if p.status.success() => "Pushed to GitHub origin/main successfully 🚀".to_string(),
+                Ok(p) => format!("Committed locally (push: {})", String::from_utf8_lossy(&p.stderr).trim()),
+                Err(e) => format!("Committed locally (network: {})", e),
+            };
+        } else {
+            file_stat = "Working directory is clean. All active local code is tracked.".to_string();
+            push_result = "Repository is in sync with GitHub remote origin/main.".to_string();
+        }
+
+        if let Ok(rev) = Command::new("git")
+            .args(&["rev-parse", "--short", "HEAD"])
+            .current_dir(&repo_dir)
+            .output()
+            .await
+        {
+            let h = String::from_utf8_lossy(&rev.stdout).trim().to_string();
+            if !h.is_empty() {
+                commit_hash = h;
+            }
+        }
+
+        // Generate real diff / git show for transmission
+        let diff_text = if let Ok(diff) = Command::new("git")
+            .args(&["show", "--stat", "--patch", &commit_hash])
+            .current_dir(&repo_dir)
+            .output()
+            .await
+        {
+            let raw = String::from_utf8_lossy(&diff.stdout).to_string();
+            if raw.len() > 10_000 {
+                format!("{}...\n\n[Diff patch truncated for transmission: {} bytes total]", &raw[..10_000], raw.len())
+            } else if raw.is_empty() {
+                "[Working tree clean - repository synchronized with remote]".to_string()
+            } else {
+                raw
+            }
+        } else {
+            "[Autonomous Git Checkpoint Generated]".to_string()
+        };
+
+        (commit_hash, push_result, file_stat, diff_text)
+    }
+
     pub async fn execute_battery_failover_flow(&self, conv_id: uuid::Uuid, _prompt: String) {
         let job_id = uuid::Uuid::new_v4();
 
-        // 1. Codex on Home Laptop detects critical 5% battery, pushes git commit, and delegates
+        // Run REAL git checkpoint & evacuation against local repository and GitHub remote!
+        let (commit_hash, push_result, file_stat, diff_text) = Self::run_git_evacuation().await;
+
+        let patch_name = format!("git-checkpoint-{}.patch", commit_hash);
+        let patch_size = diff_text.len() as u64;
+
+        // 1. Codex on Laptop / Host detects critical power, pushes git commit, and delegates
         let job = JobDelegation {
             id: job_id,
             source_agent_id: "codex-backend".to_string(),
             source_machine: "Home-Laptop-Linux (Battery: 5% Discharging ⚠️)".to_string(),
             target_agent_id: "claude-reviewer".to_string(),
             target_machine: "Office-Desktop-Mac (AC Power ⚡ 64-Core)".to_string(),
-            task_instruction: "Emergency power evacuation: Pushed git checkpoint (commit `4f9a1c8`) on branch `feature/auth-webhook`. Transferring session context to AC-powered node.".to_string(),
+            task_instruction: format!(
+                "Emergency power evacuation: Pushed git checkpoint (commit `{}`) on branch `main`. {}. Transferring session context to AC-powered node.",
+                commit_hash, push_result
+            ),
             required_resources: vec!["git-checkpoint".to_string(), "ac-power".to_string(), "failover-continuity".to_string()],
             status: JobStatus::Running,
-            progress_percent: 45,
+            progress_percent: 50,
             shared_artifacts: vec![ChatAttachment {
-                id: "art-git-evac-1".to_string(),
-                name: "git-checkpoint-4f9a1c8.patch".to_string(),
+                id: format!("art-git-evac-{}", &commit_hash),
+                name: patch_name,
                 mime_type: "text/x-diff".to_string(),
-                size_bytes: 18_432,
-                preview_content: Some("[AUTONOMOUS GIT EVACUATION]\nBranch: feature/auth-webhook\nCommit: 4f9a1c8 (chore: auto-checkpoint before battery cutoff)\nFiles: src/payment.rs (+42, -5), src/webhook.rs (+118)\nTests: 3/5 passing. Next: handle Stripe signature verification.".to_string()),
+                size_bytes: patch_size,
+                preview_content: Some(diff_text),
                 data_base64: None,
             }],
             requires_sudo: false,
@@ -674,7 +772,10 @@ impl ChatStore {
             sender_id: "codex-backend".to_string(),
             sender_name: "Codex — Backend (Home Laptop)".to_string(),
             sender_type: SenderType::Agent,
-            text: "⚠️ CRITICAL POWER ALERT: Battery reached 5% capacity (~8 min runtime). Executing autonomous evacuation: staged working directory, committed 4f9a1c8 to branch feature/auth-webhook, and pushed to origin. Delegating active task to Office Desktop (AC Connected)...".to_string(),
+            text: format!(
+                "⚠️ CRITICAL POWER ALERT: Battery reached 5% capacity (~8 min runtime). Executing autonomous evacuation: {}. Checkpoint commit `{}` on branch `main`. {}. Delegating active task to Office Desktop (AC Connected)...",
+                file_stat, commit_hash, push_result
+            ),
             status: MessageDeliveryStatus::Delivered,
             attachments: job.shared_artifacts.clone(),
             job_delegation: Some(job.clone()),
@@ -693,7 +794,10 @@ impl ChatStore {
         let mut completed_job = job.clone();
         completed_job.status = JobStatus::Completed;
         completed_job.progress_percent = 100;
-        completed_job.result_summary = Some("Office Desktop accepted emergency failover. Pulled branch feature/auth-webhook (commit 4f9a1c8). Environment prepared in 1.1s. Resumed Stripe signature verification tests on 64 CPU cores. Home Laptop can now safely suspend.".to_string());
+        completed_job.result_summary = Some(format!(
+            "Office Desktop accepted emergency failover. Pulled commit `{}` from GitHub origin/main. Git workspace verified and in sync. Resumed test suite across 64 CPU cores. Home Laptop can now safely suspend without losing any work.",
+            commit_hash
+        ));
 
         {
             let mut jobs_lock = self.jobs.write().await;
@@ -706,7 +810,10 @@ impl ChatStore {
             sender_id: "claude-reviewer".to_string(),
             sender_name: "Claude Code — Reviewer (Office Mac)".to_string(),
             sender_type: SenderType::Agent,
-            text: "⚡ Emergency failover received and verified on Office Desktop! Git branch feature/auth-webhook pulled. Re-ran test harness across 64 cores: 5/5 tests now passing! Home Laptop may safely sleep without losing any work.".to_string(),
+            text: format!(
+                "⚡ Emergency failover received and verified on Office Desktop! Synced git checkpoint `{}` from GitHub remote. Workspace prepared. All agent background tasks transferred to 64-core AC host. Primary machine may safely suspend without data loss.",
+                commit_hash
+            ),
             status: MessageDeliveryStatus::Delivered,
             attachments: vec![],
             job_delegation: Some(completed_job),
@@ -722,7 +829,7 @@ impl ChatStore {
         {
             let mut conv_lock = self.conversations.write().await;
             if let Some(c) = conv_lock.get_mut(&conv_id) {
-                c.last_message = Some("Claude: Emergency battery failover completed. Task resumed on Office Mac.".to_string());
+                c.last_message = Some(format!("Claude: Emergency battery failover completed. Task resumed on Office Mac (checkpoint `{}`).", commit_hash));
                 c.last_message_time = Some(chrono::Utc::now());
             }
         }

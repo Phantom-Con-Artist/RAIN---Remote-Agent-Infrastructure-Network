@@ -12,13 +12,13 @@ use rain_protocol::{
     CreateConversationRequest, DirectChatRequest, EmailOtpRequest, EmailOtpVerifyRequest,
     HealthStatus, JobApprovalRequest, LaunchAppRequest, NetworkMeshStatus,
     PairingConfirmRequest, PairingConfirmResponse, PairingInitRequest,
-    SendMessageRequest, SessionStatusResponse, TerminalExecuteRequest,
-    TransportKind, WriteFileRequest,
+    SendMessageRequest, SessionStatusResponse, SpokeHeartbeatRequest, SpokeRegisterRequest,
+    TerminalExecuteRequest, TransportKind, WriteFileRequest,
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tracing::{error, info, Level};
+use tracing::{debug, error, info, warn, Level};
 
 #[derive(Clone)]
 struct AppState {
@@ -674,6 +674,53 @@ async fn handle_request(
             }
         }
 
+        // --- SPOKE NODES (STAR TOPOLOGY MESH) ---
+        (Method::POST, "/api/v1/hub/spokes/register") => {
+            let body_bytes = req.into_body().collect().await?.to_bytes();
+            match serde_json::from_slice::<SpokeRegisterRequest>(&body_bytes) {
+                Ok(reg_req) => {
+                    info!("Incoming spoke node registration: '{}' (ID: {})", reg_req.device_name, reg_req.device_id);
+                    match state.store.register_spoke(reg_req).await {
+                        Ok(token) => Ok(json_response(StatusCode::OK, &ApiResponse::ok(token))),
+                        Err(e) => Ok(json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e))),
+                    }
+                }
+                Err(e) => Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &ApiResponse::<()>::err(format!("Invalid spoke registration payload: {}", e)),
+                )),
+            }
+        }
+
+        (Method::POST, "/api/v1/hub/spokes/heartbeat") => {
+            let body_bytes = req.into_body().collect().await?.to_bytes();
+            match serde_json::from_slice::<SpokeHeartbeatRequest>(&body_bytes) {
+                Ok(hb_req) => {
+                    match state.store.heartbeat_spoke(hb_req).await {
+                        Ok(_) => Ok(json_response(StatusCode::OK, &ApiResponse::ok("Heartbeat accepted"))),
+                        Err(e) => Ok(json_response(StatusCode::NOT_FOUND, &ApiResponse::<()>::err(e))),
+                    }
+                }
+                Err(e) => Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &ApiResponse::<()>::err(format!("Invalid heartbeat payload: {}", e)),
+                )),
+            }
+        }
+
+        // --- TEST & POWER SIMULATION CONTROL ---
+        (Method::POST, "/api/v1/power/simulate") => {
+            std::env::set_var("RAIN_SIMULATE_BATTERY", "5");
+            info!("Test battery mode activated: RAIN_SIMULATE_BATTERY=5 (Critical Discharging ⚠️)");
+            Ok(json_response(StatusCode::OK, &ApiResponse::ok("Simulated battery set to 5% (Critical Discharging). Refresh Machines view to inspect.")))
+        }
+
+        (Method::POST, "/api/v1/power/reset") => {
+            std::env::remove_var("RAIN_SIMULATE_BATTERY");
+            info!("Test battery mode deactivated. Reading live kernel sysfs power sensors.");
+            Ok(json_response(StatusCode::OK, &ApiResponse::ok("Battery mode restored to live hardware sensors.")))
+        }
+
         // --- AUTONOMOUS BATTERY & POWER FAILOVER ---
         (Method::POST, "/api/v1/power/failover") => {
             let convs = state.chat.list_conversations().await;
@@ -695,6 +742,72 @@ async fn handle_request(
     }
 }
 
+async fn run_spoke_agent(hub_url: &str, spoke_name: &str, pairing_code: Option<String>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let client = reqwest::Client::new();
+    let device_id = format!("spoke-{}", uuid::Uuid::new_v4().simple());
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_all();
+    let cpu_cores = sys.cpus().len();
+    let ram_total_gb = (sys.total_memory() as f32) / (1024.0 * 1024.0 * 1024.0);
+
+    let reg_req = SpokeRegisterRequest {
+        device_id: device_id.clone(),
+        device_name: spoke_name.to_string(),
+        platform: rain_protocol::PlatformKind::Linux,
+        ip_address: "127.0.0.1 (Spoke Mesh)".to_string(),
+        pairing_code,
+        cpu_cores,
+        ram_total_gb: (ram_total_gb * 10.0).round() / 10.0,
+        gpu_model: Some("Peer GPU / Worker Node".to_string()),
+        battery: RemoteManager::read_real_battery(),
+    };
+
+    info!("Registering Spoke node '{}' ({}) with Hub at {}", spoke_name, device_id, hub_url);
+    let reg_url = format!("{}/api/v1/hub/spokes/register", hub_url.trim_end_matches('/'));
+
+    match client.post(&reg_url).json(&reg_req).send().await {
+        Ok(res) if res.status().is_success() => {
+            info!("Successfully registered with Hub! Entering continuous telemetry heartbeat loop...");
+        }
+        Ok(res) => {
+            error!("Failed to register with Hub: HTTP {}", res.status());
+            return Ok(());
+        }
+        Err(e) => {
+            error!("Cannot connect to Hub at {}: {}", reg_url, e);
+            return Ok(());
+        }
+    }
+
+    let heartbeat_url = format!("{}/api/v1/hub/spokes/heartbeat", hub_url.trim_end_matches('/'));
+    let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(3));
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    let disk_total_bytes: u64 = disks.iter().map(|d| d.total_space()).sum();
+
+    loop {
+        ticker.tick().await;
+        sys.refresh_all();
+
+        let hb = SpokeHeartbeatRequest {
+            device_id: device_id.clone(),
+            cpu_usage: sys.global_cpu_usage(),
+            memory_used_bytes: sys.used_memory(),
+            memory_total_bytes: sys.total_memory(),
+            disk_used_bytes: disks.iter().map(|d| d.total_space().saturating_sub(d.available_space())).sum(),
+            disk_total_bytes,
+            active_agents_count: 1,
+            uptime_seconds: sysinfo::System::uptime(),
+            battery: RemoteManager::read_real_battery(),
+        };
+
+        if let Err(e) = client.post(&heartbeat_url).json(&hb).send().await {
+            warn!("Spoke heartbeat failed: {}", e);
+        } else {
+            debug!("Heartbeat delivered to Hub (CPU: {:.1}%, RAM: {:.1} GB)", hb.cpu_usage, (hb.memory_used_bytes as f32) / (1024.0*1024.0*1024.0));
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
@@ -712,12 +825,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
   Messenger & Agent Orchestration Server
     "#, env!("CARGO_PKG_VERSION"));
 
+    let args: Vec<String> = std::env::args().collect();
+    let is_spoke = args.iter().any(|a| a == "--spoke");
+
+    if is_spoke {
+        let mut hub_url = "http://127.0.0.1:7890".to_string();
+        let mut spoke_name = format!("{}-Spoke", sysinfo::System::host_name().unwrap_or_else(|| "RAIN-Node".to_string()));
+        let mut pairing_code: Option<String> = None;
+
+        let mut i = 1;
+        while i < args.len() {
+            if args[i] == "--hub-url" && i + 1 < args.len() {
+                hub_url = args[i + 1].clone();
+                i += 1;
+            } else if args[i] == "--name" && i + 1 < args.len() {
+                spoke_name = args[i + 1].clone();
+                i += 1;
+            } else if args[i] == "--pin" && i + 1 < args.len() {
+                pairing_code = Some(args[i + 1].clone());
+                i += 1;
+            }
+            i += 1;
+        }
+
+        info!("Starting RAIN Daemon in Spoke Agent Mode");
+        return run_spoke_agent(&hub_url, &spoke_name, pairing_code).await;
+    }
+
+    let store = Arc::new(InMemoryStore::new());
+    let remote = Arc::new(RemoteManager::new_with_store((*store).clone()));
+
     let state = AppState {
         registry: Arc::new(CapabilityRegistry::new()),
         supervisor: Arc::new(AgentSupervisor::new()),
-        store: Arc::new(InMemoryStore::new()),
+        store: store.clone(),
         chat: Arc::new(ChatStore::new()),
-        remote: Arc::new(RemoteManager::new()),
+        remote,
     };
 
     let port = std::env::var("RAIN_PORT")
@@ -727,7 +870,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = TcpListener::bind(addr).await?;
-    info!("RAIN Daemon active and listening on http://{}", addr);
+    info!("RAIN Hub Daemon active and listening on http://{}", addr);
     info!("Registered {} capabilities", state.registry.list_capabilities().len());
 
     loop {

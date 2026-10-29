@@ -1,10 +1,32 @@
 use rain_protocol::{
     DeviceRegistration, EmailOtpRequest, EmailOtpVerifyRequest, HubSpokeNode, HubTopologyStatus,
     PairingConfirmResponse, PairingInitResponse, PairingTicketResponse, PlatformKind,
+    SpokeHeartbeatRequest, SpokeRegisterRequest,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpokeNodeInfo {
+    pub device_id: String,
+    pub device_name: String,
+    pub platform: PlatformKind,
+    pub ip_address: String,
+    pub cpu_cores: usize,
+    pub ram_total_gb: f32,
+    pub gpu_model: Option<String>,
+    pub cpu_usage: f32,
+    pub memory_used_bytes: u64,
+    pub memory_total_bytes: u64,
+    pub disk_used_bytes: u64,
+    pub disk_total_bytes: u64,
+    pub active_agents_count: usize,
+    pub uptime_seconds: u64,
+    pub battery: Option<rain_protocol::BatteryStatus>,
+    pub last_heartbeat: chrono::DateTime<chrono::Utc>,
+}
 
 #[derive(Debug, Clone)]
 pub struct PairingSession {
@@ -28,6 +50,7 @@ pub struct EmailOtpSession {
 #[derive(Debug, Clone)]
 pub struct InMemoryStore {
     devices: Arc<RwLock<HashMap<String, DeviceRegistration>>>,
+    spokes: Arc<RwLock<HashMap<String, SpokeNodeInfo>>>,
     active_pairings: Arc<RwLock<HashMap<String, PairingSession>>>,
     email_otps: Arc<RwLock<HashMap<String, EmailOtpSession>>>,
     auth_tokens: Arc<RwLock<HashMap<String, String>>>, // token -> device_id
@@ -93,6 +116,7 @@ impl InMemoryStore {
 
         Self {
             devices: Arc::new(RwLock::new(devices)),
+            spokes: Arc::new(RwLock::new(HashMap::new())),
             active_pairings: Arc::new(RwLock::new(HashMap::new())),
             email_otps: Arc::new(RwLock::new(HashMap::new())),
             auth_tokens: Arc::new(RwLock::new(auth_tokens)),
@@ -336,6 +360,99 @@ impl InMemoryStore {
             active_spokes_count: active_count,
             spokes,
         }
+    }
+
+    pub async fn register_spoke(&self, req: SpokeRegisterRequest) -> Result<String, String> {
+        let now = chrono::Utc::now();
+        let token = format!("rain_spoke_{}", uuid::Uuid::new_v4().simple());
+
+        let spoke_info = SpokeNodeInfo {
+            device_id: req.device_id.clone(),
+            device_name: req.device_name.clone(),
+            platform: req.platform.clone(),
+            ip_address: req.ip_address.clone(),
+            cpu_cores: req.cpu_cores,
+            ram_total_gb: req.ram_total_gb,
+            gpu_model: req.gpu_model.clone(),
+            cpu_usage: 0.0,
+            memory_used_bytes: 0,
+            memory_total_bytes: (req.ram_total_gb * 1024.0 * 1024.0 * 1024.0) as u64,
+            disk_used_bytes: 0,
+            disk_total_bytes: 0,
+            active_agents_count: 0,
+            uptime_seconds: 0,
+            battery: req.battery.clone(),
+            last_heartbeat: now,
+        };
+
+        {
+            let mut spokes = self.spokes.write().await;
+            spokes.insert(req.device_id.clone(), spoke_info);
+        }
+
+        // Also enroll into devices table so Star Topology views show it immediately
+        {
+            let mut devices = self.devices.write().await;
+            devices.insert(
+                req.device_id.clone(),
+                DeviceRegistration {
+                    device_id: req.device_id.clone(),
+                    device_name: req.device_name.clone(),
+                    platform: req.platform.clone(),
+                    enrolled_at: now,
+                    last_seen_at: now,
+                    is_revoked: false,
+                    is_approved: true,
+                    ip_address: Some(req.ip_address.clone()),
+                    role: "spoke_node".to_string(),
+                },
+            );
+        }
+
+        {
+            let mut tokens = self.auth_tokens.write().await;
+            tokens.insert(token.clone(), req.device_id);
+        }
+
+        Ok(token)
+    }
+
+    pub async fn heartbeat_spoke(&self, req: SpokeHeartbeatRequest) -> Result<(), String> {
+        let now = chrono::Utc::now();
+        let mut spokes = self.spokes.write().await;
+        if let Some(s) = spokes.get_mut(&req.device_id) {
+            s.cpu_usage = req.cpu_usage;
+            s.memory_used_bytes = req.memory_used_bytes;
+            s.memory_total_bytes = req.memory_total_bytes;
+            s.disk_used_bytes = req.disk_used_bytes;
+            s.disk_total_bytes = req.disk_total_bytes;
+            s.active_agents_count = req.active_agents_count;
+            s.uptime_seconds = req.uptime_seconds;
+            if req.battery.is_some() {
+                s.battery = req.battery;
+            }
+            s.last_heartbeat = now;
+
+            // Touch last_seen_at in devices table
+            let mut devices = self.devices.write().await;
+            if let Some(d) = devices.get_mut(&req.device_id) {
+                d.last_seen_at = now;
+            }
+            Ok(())
+        } else {
+            Err("Spoke not found. Please register spoke first.".to_string())
+        }
+    }
+
+    pub async fn get_active_spokes(&self) -> Vec<SpokeNodeInfo> {
+        let spokes = self.spokes.read().await;
+        let now = chrono::Utc::now();
+        // Return spokes active in the last 60 seconds
+        spokes
+            .values()
+            .filter(|s| (now - s.last_heartbeat).num_seconds() < 60)
+            .cloned()
+            .collect()
     }
 
     pub async fn revoke_device(&self, device_id: &str) -> bool {
