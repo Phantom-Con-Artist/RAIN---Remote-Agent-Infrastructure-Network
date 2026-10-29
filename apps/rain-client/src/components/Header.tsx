@@ -1,67 +1,10 @@
 import React from 'react';
-import { FiSun, FiMoon, FiLink, FiCloud } from 'react-icons/fi';
-import type { ThemeMode, NetworkMeshStatus } from '../types';
-
-export interface HeaderProps {
-  theme: ThemeMode;
-  onToggleTheme: () => void;
-  connectionStatus: 'online' | 'offline' | 'connecting';
-  latencyMs: number;
-  meshStatus: NetworkMeshStatus | null;
-  onOpenPairing: () => void;
-}
-
-export const Header = ({
-  theme,
-  onToggleTheme,
-  connectionStatus,
-  latencyMs,
-  meshStatus,
-  onOpenPairing,
-}: HeaderProps) => {
-  const transportName = meshStatus?.current_transport
-    ? meshStatus.current_transport.replace('_', ' ')
-    : 'Local LAN / USB';
-
-  return (
-    <header className="app-header">
-      <div className="app-brand">
-        <div className="brand-icon">
-          <FiCloud size={16} />
-        </div>
-        <div className="brand-text-col">
-          <span className="brand-title">RAIN</span>
-          <span className="brand-sub">Remote Agent Infrastructure Network</span>
-        </div>
-      </div>
-
-      <div className="header-actions">
-        <button
-          className="icon-button"
-          onClick={onOpenPairing}
-          title="Pair a new machine or phone"
-        >
-          <FiLink size={14} />
-          <span>Pair Node</span>
-        </button>
-
-        <div className="telemetry-pill" title={`Transport: ${transportName}`}>
-          <span className={`status-dot ${connectionStatus}`} />
-          <span>{connectionStatus === 'online' ? `${latencyMs} ms` : 'Offline'}</span>
-          <span className="transport-tag">{transportName}</span>
-        </div>
-
-        <button
-          className="icon-button"
-          onClick={onToggleTheme}
-          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} theme`}
-          aria-label="Toggle theme"
-        >
-          {theme === 'dark' ? <FiSun size={15} /> : <FiMoon size={15} />}
-        </button>
-      </div>
-    </header>
-  );
-};
-
-
+import {FiSun,FiMoon,FiLink} from 'react-icons/fi';
+import type {ThemeMode,NetworkMeshStatus} from '../types';
+import {RainIdentity} from './RainIdentity';
+export interface HeaderProps {theme:ThemeMode;onToggleTheme:()=>void;connectionStatus:'online'|'offline'|'connecting';latencyMs:number;meshStatus:NetworkMeshStatus|null;onOpenPairing:()=>void;title?:string}
+export function Header({theme,onToggleTheme,connectionStatus,latencyMs,onOpenPairing,title}:HeaderProps){return <header className="app-header">
+ <RainIdentity/>
+ <div className="app-location"><strong>{title||'Workspace'}</strong><span>Remote agent workbench</span></div>
+ <div className="header-actions"><span className="connection-state">{connectionStatus==='online'?`Connected · ${latencyMs} ms`:connectionStatus==='connecting'?'Connecting…':'Host unavailable'}</span><button className="icon-button" onClick={onOpenPairing} aria-label="Connect device"><FiLink size={18}/><span>Connect device</span></button><button className="icon-button theme-button" onClick={onToggleTheme} aria-label={`Use ${theme==='dark'?'light':'dark'} theme`}>{theme==='dark'?<FiSun size={19}/>:<FiMoon size={19}/>}</button></div>
+ </header>}

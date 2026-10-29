@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FiFolder,
   FiFileText,
@@ -26,6 +26,8 @@ export const FilesView: React.FC<FilesViewProps> = ({
   onWriteFile,
 }) => {
   const [editingFile, setEditingFile] = useState<{ path: string; name: string; content: string } | null>(null);
+  const [pathDraft, setPathDraft] = useState(currentPath);
+  useEffect(() => setPathDraft(currentPath), [currentPath]);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -87,7 +89,6 @@ export const FilesView: React.FC<FilesViewProps> = ({
             fontFamily: 'var(--font-mono)',
             fontSize: 12,
             color: 'var(--text-primary)',
-            outline: 'none',
             resize: 'none',
             marginTop: 10
           }}
@@ -114,16 +115,19 @@ export const FilesView: React.FC<FilesViewProps> = ({
       </div>
 
       {error && <p role="alert">{error}</p>}
-      <div className="breadcrumb-strip">
-        <span>Path:</span>
-        <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{currentPath}</span>
-      </div>
+      <form className="breadcrumb-strip" onSubmit={e => {e.preventDefault(); onOpenDirectory(pathDraft);}}>
+        <label htmlFor="explorer-path">Path</label>
+        <input id="explorer-path" value={pathDraft} onChange={e => setPathDraft(e.target.value)} spellCheck={false}/>
+        <button className="icon-button" type="submit">Go</button>
+      </form>
 
       <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
         {files.map((file, idx) => (
           <div
             key={idx}
             className="file-row"
+            role="button" tabIndex={0}
+            onKeyDown={e => {if(e.key === 'Enter' || e.key === ' ') {e.preventDefault(); handleFileClick(file);}}}
             onClick={() => handleFileClick(file)}
           >
             <div className="file-meta-col">

@@ -15,7 +15,7 @@ export function HostCatalog({machine,cwd,onLaunch}: {machine:string;cwd:string;o
   {catalog?.shell&&<button className="icon-button primary" disabled={!!busy} onClick={()=>launch({name:'Terminal',command:catalog.shell!},['-l'])}>Launch terminal</button>}</div>
   {catalog&&!catalog.agents.length&&<p>No recognized agent CLIs found. Search installed executables below, or use the custom launcher.</p>}
   <label>Find another installed CLI<input className="chat-input-field" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search executable names" /></label>
-  <div className="catalog-actions">{matches?.map(item=><button className="icon-button" disabled={!!busy} key={item.command} title={item.command} onClick={()=>launch(item)}>Launch {item.name}</button>)}</div>
+  {!!matches?.length && <div className="catalog-actions">{matches.map(item=><button className="icon-button" disabled={!!busy} key={item.command} title={item.command} onClick={()=>launch(item)}>Launch {item.name}</button>)}</div>}
   {busy&&<p role="status">Launching session…</p>}
  </section>
 }

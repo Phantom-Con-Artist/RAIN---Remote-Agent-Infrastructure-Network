@@ -35,7 +35,7 @@ export function AgentWorkbench({ sessions, onRefresh, onOpenChat, machine, onMac
   }
   return <section className="agent-workbench" aria-label="Agent sessions">
     <h2>Agent sessions</h2>
-    <p>Launch an installed CLI on this host. Interactive mode gives the CLI a terminal. Remote sessions use your configured SSH machines.</p>
+    <p>Choose a machine, then launch an agent or open a terminal.</p>
     <MachinePicker machine={machine} onChange={onMachineChange} />
     <HostCatalog machine={machine} cwd={cwd} onLaunch={async (command,name,args) => {
       const res = await apiRequest<{id:string}>('/api/v1/agents/start',{method:'POST',body:JSON.stringify({command,name,args,provider:'custom',interactive:true,machine:machine||null,cwd:cwd.trim()||null,env_vars:{}})});

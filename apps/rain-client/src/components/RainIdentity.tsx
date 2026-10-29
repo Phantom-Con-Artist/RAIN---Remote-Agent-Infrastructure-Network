@@ -1,0 +1,2 @@
+import React from 'react';
+export function RainIdentity(){return <div className="rain-identity" aria-label="RAIN"><pre className="rain-logo" aria-hidden="true">{'|\\\n|_)\n| \\'}</pre><pre className="rain-wordmark" aria-hidden="true">{' ____      _    ___ _   _\n|  _ \\    / \\  |_ _| \\ | |\n| |_) |  / _ \\  | ||  \\| |\n|  _ <  / ___ \\ | || |\\  |\n|_| \\_\\/_/   \\_\\___|_| \\_|'}</pre><span className="sr-only">RAIN</span></div>}

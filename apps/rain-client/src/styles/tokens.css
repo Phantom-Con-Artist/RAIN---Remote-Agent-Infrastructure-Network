@@ -12,8 +12,8 @@
   --radius-lg: 8px;
 
   --transition-fast: 0.15s ease;
-  --header-height: 52px;
-  --bottom-nav-height: 56px;
+  --header-height: 80px;
+  --bottom-nav-height: 64px;
 }
 
 /* --------------------------------------------------------------------------
@@ -21,25 +21,28 @@
    Deep charcoal and slate surfaces, high contrast, zero glow
    -------------------------------------------------------------------------- */
 [data-theme="dark"] {
-  --bg-canvas: #090b0e;
-  --bg-surface: #11141a;
-  --bg-subtle: #171c24;
-  --bg-elevated: #1e2430;
-  --bg-hover: #262e3d;
-  --bg-active: #2d3647;
+  color-scheme: dark;
+  --primary-ink: #1b1b1b;
+  --accent-hover: #ffffff;
+  --bg-canvas: #141414;
+  --bg-surface: #1b1b1b;
+  --bg-subtle: #242424;
+  --bg-elevated: #303030;
+  --bg-hover: #353535;
+  --bg-active: #3b3b3b;
 
-  --border-subtle: #1e2430;
-  --border-default: #2a3242;
-  --border-strong: #3d485e;
+  --border-subtle: #303030;
+  --border-default: #3c3c3c;
+  --border-strong: #666666;
 
-  --text-primary: #f0f3f8;
-  --text-secondary: #9aa5b8;
-  --text-muted: #647087;
+  --text-primary: #ededed;
+  --text-secondary: #bdbdbd;
+  --text-muted: #a6a6a6;
 
-  --accent-primary: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-subtle: #172554;
-  --accent-text: #bfdbfe;
+  --accent-primary: #e2e2e2;
+  --accent-hover: #ffffff;
+  --accent-subtle: #303030;
+  --accent-text: #ededed;
 
   --danger-surface: #450a0a;
   --danger-border: #991b1b;
@@ -50,21 +53,21 @@
   --warning-border: #92400e;
   --warning-text: #fcd34d;
 
-  --success-surface: #022c22;
-  --success-border: #065f46;
-  --success-text: #6ee7b7;
+  --success-surface: #252b25;
+  --success-border: #526852;
+  --success-text: #bfd2bf;
 
-  --bubble-human-bg: #1e3a5f;
-  --bubble-human-text: #f8fafc;
-  --bubble-human-border: #2b4c7e;
+  --bubble-human-bg: #303030;
+  --bubble-human-text: #f5f5f5;
+  --bubble-human-border: #484848;
 
-  --bubble-agent-bg: #151922;
-  --bubble-agent-text: #e2e8f0;
-  --bubble-agent-border: #242c3d;
+  --bubble-agent-bg: #202020;
+  --bubble-agent-text: #dfdfdf;
+  --bubble-agent-border: #363636;
 
-  --bubble-system-bg: #11141a;
-  --bubble-system-text: #94a3b8;
-  --bubble-system-border: #1e2430;
+  --bubble-system-bg: #1b1b1b;
+  --bubble-system-text: #a6a6a6;
+  --bubble-system-border: #303030;
 
   --card-shadow: none;
 }
@@ -74,25 +77,27 @@
    Studio grey, clean white panels, sharp crisp borders
    -------------------------------------------------------------------------- */
 [data-theme="light"] {
-  --bg-canvas: #f8fafc;
+  color-scheme: light;
+  --primary-ink: #ffffff;
+  --bg-canvas: #f5f5f5;
   --bg-surface: #ffffff;
-  --bg-subtle: #f1f5f9;
+  --bg-subtle: #eeeeee;
   --bg-elevated: #ffffff;
-  --bg-hover: #e2e8f0;
-  --bg-active: #cbd5e1;
+  --bg-hover: #dfdfdf;
+  --bg-active: #d0d0d0;
 
-  --border-subtle: #e2e8f0;
-  --border-default: #cbd5e1;
-  --border-strong: #94a3b8;
+  --border-subtle: #dfdfdf;
+  --border-default: #d0d0d0;
+  --border-strong: #767676;
 
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
+  --text-primary: #202020;
+  --text-secondary: #535353;
+  --text-muted: #666666;
 
-  --accent-primary: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-subtle: #eff6ff;
-  --accent-text: #1e40af;
+  --accent-primary: #262626;
+  --accent-hover: #404040;
+  --accent-subtle: #eeeeee;
+  --accent-text: #252525;
 
   --danger-surface: #fef2f2;
   --danger-border: #fecaca;
@@ -103,21 +108,21 @@
   --warning-border: #fde68a;
   --warning-text: #92400e;
 
-  --success-surface: #ecfdf5;
-  --success-border: #a7f3d0;
-  --success-text: #065f46;
+  --success-surface: #edf2ed;
+  --success-border: #bfcebf;
+  --success-text: #526852;
 
-  --bubble-human-bg: #2563eb;
+  --bubble-human-bg: #e8e8e8;
   --bubble-human-text: #ffffff;
-  --bubble-human-border: #1d4ed8;
+  --bubble-human-border: #d0d0d0;
 
-  --bubble-agent-bg: #f8fafc;
-  --bubble-agent-text: #0f172a;
-  --bubble-agent-border: #e2e8f0;
+  --bubble-agent-bg: #f5f5f5;
+  --bubble-agent-text: #202020;
+  --bubble-agent-border: #dfdfdf;
 
-  --bubble-system-bg: #f1f5f9;
-  --bubble-system-text: #475569;
-  --bubble-system-border: #e2e8f0;
+  --bubble-system-bg: #eeeeee;
+  --bubble-system-text: #535353;
+  --bubble-system-border: #dfdfdf;
 
   --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }

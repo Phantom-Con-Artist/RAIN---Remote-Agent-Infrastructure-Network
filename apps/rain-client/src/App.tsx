@@ -383,6 +383,7 @@ export const App: React.FC = () => {
     <div className="app-container">
       {/* 1. Header Bar */}
       <Header
+        title={{chats: 'Conversations', machines: 'Machines & sessions', files: 'Files', mesh: 'Connections'}[currentTab]}
         theme={theme}
         onToggleTheme={toggleTheme}
         connectionStatus={connectionStatus}
@@ -415,13 +416,13 @@ export const App: React.FC = () => {
           const res = await apiRequest<Conversation>('/api/v1/conversations/direct', { method: 'POST', body: JSON.stringify({agent_id: id}) });
           await loadConversations(); setActiveConversationId(res.data.id); setCurrentTab('chats'); setIsMobileChatOpen(true);
         }} />
-          <MachinesView
+          <details className="host-utilities"><summary>Hub hardware & utilities</summary><MachinesView
             machines={machines}
             installedApps={installedApps}
             onLaunchApp={handleLaunchApp}
             onExecuteTerminal={handleExecuteTerminal}
             onTriggerBatteryEvacuate={handleTriggerBatteryEvacuate}
-          />
+          /></details>
         </div>}
 
         {currentTab === 'files' && (
