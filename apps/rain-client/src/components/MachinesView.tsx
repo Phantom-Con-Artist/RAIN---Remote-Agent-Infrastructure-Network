@@ -361,3 +361,4 @@ export const MachinesView: React.FC<MachinesViewProps> = ({
     </div>
   );
 };
+

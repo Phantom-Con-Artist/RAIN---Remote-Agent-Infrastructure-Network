@@ -403,3 +403,4 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
     </div>
   );
 };
+

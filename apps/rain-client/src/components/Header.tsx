@@ -1,8 +1,8 @@
 import React from 'react';
 import { FiSun, FiMoon, FiLink, FiCloud } from 'react-icons/fi';
-import { ThemeMode, NetworkMeshStatus } from '../types';
+import type { ThemeMode, NetworkMeshStatus } from '../types';
 
-interface HeaderProps {
+export interface HeaderProps {
   theme: ThemeMode;
   onToggleTheme: () => void;
   connectionStatus: 'online' | 'offline' | 'connecting';
@@ -11,14 +11,14 @@ interface HeaderProps {
   onOpenPairing: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({
+export const Header = ({
   theme,
   onToggleTheme,
   connectionStatus,
   latencyMs,
   meshStatus,
   onOpenPairing,
-}) => {
+}: HeaderProps) => {
   const transportName = meshStatus?.current_transport
     ? meshStatus.current_transport.replace('_', ' ')
     : 'Local LAN / USB';
@@ -63,3 +63,5 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+
+

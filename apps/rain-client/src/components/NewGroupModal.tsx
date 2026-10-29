@@ -121,3 +121,4 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
     </div>
   );
 };
+

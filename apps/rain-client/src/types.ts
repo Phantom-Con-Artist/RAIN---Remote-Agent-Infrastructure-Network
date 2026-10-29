@@ -158,3 +158,4 @@ export interface NetworkMeshStatus {
 
 export type TabType = 'chats' | 'machines' | 'files' | 'mesh';
 export type ThemeMode = 'dark' | 'light';
+

@@ -248,3 +248,4 @@ export const PairingModal: React.FC<PairingModalProps> = ({
     </div>
   );
 };
+
