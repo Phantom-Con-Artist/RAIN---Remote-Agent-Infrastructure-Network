@@ -20,11 +20,11 @@ ssh -N -L 7890:127.0.0.1:7890 your-user@your-host
 
 Open `http://127.0.0.1:7890` on that computer. SSH supplies authentication and encryption. The SSH account needs access to the host; RAIN uses the daemon account's filesystem and process permissions. A phone needs an SSH client supporting local port forwarding. Direct LAN/public access is currently disabled; the in-app pairing screen does not establish an encrypted tunnel.
 
-In Machines, launch an executable installed on the host. Arguments are a JSON string array, for example `["--some-option"]`. A working directory is a path on the host. Enable Interactive terminal for CLIs that require a TTY, or disable it for standard-input programs. Unix hosts allocate a controlling PTY. The Terminal button opens a transcript and raw input controls (Enter, Tab, arrows, Escape, Interrupt). This transcript is not a full terminal screen emulator; programs with complex full-screen layouts may render imperfectly.
+In Machines, launch an executable installed on the host. Arguments are a JSON string array, for example `["--some-option"]`. A working directory is a path on the host. Enable Interactive terminal for CLIs that require a TTY, or disable it for standard-input programs. Unix hosts allocate a controlling PTY. The Terminal button opens an xterm.js terminal emulator with keyboard, paste, Enter, Tab, arrows, Escape, Interrupt, and PTY resize support. Interactive direct chats open their native terminal by default; use the terminal selector to return to the conversation. Terminal redraws stay out of chat messages.
 
 Open a session's chat, or create a group and select sessions. A group message is delivered to each member's stdin. `@name message` selects a uniquely named group member; `@all message` selects all members. `/commands` are passed literally to the CLI, so the CLI's input mode determines which commands work. Output lines and process exit events appear in conversations containing that session.
 
-Deleting a group removes its conversation and workflow records without terminating its agents. Stop a session explicitly from Machines when needed.
+Deleting a group removes its conversation and workflow records without terminating its agents. Stop a session explicitly from Machines when needed. Stopped sessions have a Remove action: it removes the process record and group routing membership while retaining conversation history. Running sessions must be stopped before removal.
 
 ## Execute on other machines
 
@@ -49,7 +49,7 @@ On restart, history and session records return. Previously running sessions are 
 
 ## Current limits
 
-PTY support currently requires a Unix hub. The terminal view is a transcript rather than a full ANSI screen emulator. Provider-native thread resume and approval APIs still require provider-specific integrations. The broadcast output channel can drop events under sustained overload, with a logged warning. Cross-machine launch requires an SSH connection already configured for the daemon's account.
+PTY support currently requires a Unix hub. Terminal output is polled in ordered chunks; if a client falls behind the retained output window, it resets and replays that window. Provider-native thread resume and approval APIs still require provider-specific integrations. The broadcast output channel can drop events under sustained overload, with a logged warning. Cross-machine launch requires an SSH connection already configured for the daemon's account.
 
 ## Discover tools and browse remote files
 

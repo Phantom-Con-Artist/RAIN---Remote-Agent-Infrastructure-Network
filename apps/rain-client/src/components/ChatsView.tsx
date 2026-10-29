@@ -1,3 +1,4 @@
+import { TerminalPanel } from './TerminalPanel';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   FiPlus,
@@ -47,6 +48,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
   isMobileChatOpen,
   onCloseMobileChat,
 }) => {
+  const [terminalId, setTerminalId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'groups' | 'direct'>('all');
   const [inputText, setInputText] = useState('');
   const [targetSessionId, setTargetSessionId] = useState<string>('all');
@@ -55,6 +57,11 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const activeConv = conversations.find(c => c.id === activeConversationId) || null;
+
+  const interactiveMembers = sessions.filter(s => s.interactive && activeConv?.participant_ids.includes(s.id));
+  const directTerminal = activeConv && !activeConv.is_group ? interactiveMembers[0]?.id : undefined;
+  useEffect(() => setTerminalId(directTerminal || null), [activeConv?.id, directTerminal]);
+  const visibleMessages = messages.filter(m => m.sender_type === 'human' || !m.text.includes('\x1b'));
 
   const filteredConvs = conversations.filter(c => {
     if (filter === 'groups') return c.is_group;
@@ -143,7 +150,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                   <span className="conv-title">{conv.title}</span>
                   <span className="conv-time">{formatTime(conv.last_message_time)}</span>
                 </div>
-                <div className="conv-preview">{conv.last_message || 'No messages yet'}</div>
+                <div className="conv-preview">{conv.last_message?.includes('\x1b') ? 'Terminal session' : conv.last_message || 'No messages yet'}</div>
               </div>
             </div>
           ))}
@@ -175,7 +182,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                   <span className="chat-header-title">{activeConv.title}</span>
                   <span className="chat-header-meta">
                     {activeConv.is_group
-                      ? `${activeConv.participant_ids.length} participants connected`
+                      ? `${activeConv.participant_ids.length} members`
                       : '1-on-1 Direct session'}
                     {!activeConv.is_active && ' • (Paused)'}
                   </span>
@@ -183,6 +190,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
               </div>
 
               <div className="header-actions">
+                {interactiveMembers.length > 0 && <select aria-label="Open agent terminal" value={terminalId || ''} onChange={e => setTerminalId(e.target.value || null)}><option value="">Conversation</option>{interactiveMembers.map(s=><option key={s.id} value={s.id}>{s.name} terminal</option>)}</select>}
                 {activeConv.is_active && (
                   <button
                     className="icon-button"
@@ -204,8 +212,8 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
             </div>
 
             {/* Messages Feed */}
-            <div className="chat-messages-scroll" ref={containerRef}>
-              {messages.map(msg => (
+            {terminalId ? <div className="chat-terminal"><TerminalPanel key={terminalId} id={terminalId}/></div> : <div className="chat-messages-scroll" ref={containerRef}>
+              {visibleMessages.map(msg => (
                 <div key={msg.id} className={`message-row ${msg.sender_type}`}>
                   {msg.sender_type !== 'human' && msg.sender_type !== 'system' && (
                     <span className="message-sender">{msg.sender_name}</span>
@@ -317,7 +325,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                 </div>
               ))}
               <div ref={messagesEndRef} />
-            </div>
+            </div>}
 
             {/* Quick Prompt Bar */}
             <div className="quick-prompts-row">
@@ -344,7 +352,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
             </div>
 
             {/* Message Input Toolbar */}
-            <form className="chat-input-bar" onSubmit={handleSend}>
+            {!terminalId && <form className="chat-input-bar" onSubmit={handleSend}>
               <select
                 value={targetSessionId}
                 onChange={e => setTargetSessionId(e.target.value)}
@@ -383,7 +391,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
               >
                 <FiSend size={15} />
               </button>
-            </form>
+            </form>}
           </>
         ) : (
           <div

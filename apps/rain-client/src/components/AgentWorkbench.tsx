@@ -33,6 +33,11 @@ export function AgentWorkbench({ sessions, onRefresh, onOpenChat, machine, onMac
     try { await apiRequest(`/api/v1/agents/${id}/stop`, { method: 'POST' }); onRefresh(); }
     catch (e: any) { setError(e.message); }
   }
+  async function remove(id: string) {
+    setError('');
+    try { await apiRequest(`/api/v1/agents/${id}`, {method:'DELETE'}); if(terminal===id)setTerminal(null); onRefresh(); }
+    catch(e:any){setError(e.message)}
+  }
   return <section className="agent-workbench" aria-label="Agent sessions">
     <h2>Agent sessions</h2>
     <p>Choose a machine, then launch an agent or open a terminal.</p>
@@ -56,7 +61,7 @@ export function AgentWorkbench({ sessions, onRefresh, onOpenChat, machine, onMac
       <button className="icon-button" onClick={() => setTerminal(s.id)}>Terminal</button>
       <button className="icon-button" onClick={() => onOpenChat(s.id).catch(e => setError(e.message))}>Open chat</button>
       {s.state === 'online' && <button className="icon-button" onClick={() => apiRequest(`/api/v1/agents/${s.id}/input`, {method:'POST', body: JSON.stringify({input:'\u0003'})}).catch(e => setError(e.message))}>Interrupt</button>}
-      <button className="icon-button" disabled={s.state !== 'online'} onClick={() => stop(s.id)}>Stop</button>
+      {s.state === 'online' ? <button className="icon-button" onClick={() => stop(s.id)}>Stop</button> : <button className="icon-button" onClick={() => remove(s.id)}>Remove</button>}
     </div>)}</div>
     {terminal && <TerminalPanel id={terminal} onClose={() => setTerminal(null)} />}
     {!sessions.length && <p>No sessions yet. Launch a CLI to start a direct chat or add it to a group.</p>}
