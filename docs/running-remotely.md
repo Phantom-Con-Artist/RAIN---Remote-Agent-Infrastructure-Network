@@ -50,3 +50,11 @@ On restart, history and session records return. Previously running sessions are 
 ## Current limits
 
 PTY support currently requires a Unix hub. The terminal view is a transcript rather than a full ANSI screen emulator. Provider-native thread resume and approval APIs still require provider-specific integrations. The broadcast output channel can drop events under sustained overload, with a logged warning. Cross-machine launch requires an SSH connection already configured for the daemon's account.
+
+## Discover tools and browse remote files
+
+In Machines, select a host to scan installed executables. Recognized agent CLIs get individual launch buttons; search finds other executables. The scanner checks PATH and common user binary directories, including npm, Cargo, Bun, and NVM locations. It does not run discovered executables, check subscriptions, or authenticate providers. A successful scan lists available executable files, not whether each provider is signed in. Each launch creates an independent global session that can be added to groups.
+
+Use Launch terminal to start the detected shell. Files shares the machine selection with Machines and browses that host over SSH. Open folders, read UTF-8 files, and explicitly save edits; binary files cannot be edited and files larger than 5 MB are rejected. Launch terminal here starts a shell in the displayed directory. Changing hosts clears the explorer and editor so a file from one host cannot be saved accidentally on another.
+
+Host scans and file operations require Python 3 on the selected host in addition to SSH access. They use the same SSH host allowlist and strict host-key checks as agent launches, with a 20-second timeout. Listings are limited to 10,000 entries and discovery to 5,000 executable names. Permissions are those of the SSH user (or daemon user for This host).

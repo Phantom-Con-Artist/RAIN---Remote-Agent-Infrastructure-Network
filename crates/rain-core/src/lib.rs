@@ -13,3 +13,5 @@ pub use remote_manager::RemoteManager;
 pub mod terminal;
 
 mod persistence;
+
+pub mod host_access;

@@ -11,3 +11,17 @@
 .agent-workbench [role="alert"] { color: var(--danger-text); margin-top: 16px; }
 .agent-workbench :focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; }
 @media (max-width: 768px) { .agent-launch-form { grid-template-columns: 1fr; } .agent-workbench { padding: 16px; } .agent-session-row { flex-wrap: wrap; } }
+
+.host-catalog { padding: 20px 0; border-bottom: 1px solid var(--border-default); margin-bottom: 20px; }
+.catalog-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+.catalog-actions button { min-height: 44px; }
+.machine-picker { display: flex; align-items: center; gap: 12px; }
+.machine-picker select { max-width: 100%; padding: 10px; background: var(--bg-canvas); border: 1px solid var(--border-strong); border-radius: 6px; }
+.workspace-toolbar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 16px; border-bottom: 1px solid var(--border-default); }
+.files-workspace { overflow: auto; height: 100%; }
+.files-workspace > [role] { padding: 12px 16px; }
+.files-workspace [role="alert"] { color: var(--danger-text); }
+.agent-workbench details summary { cursor: pointer; padding: 12px 0; }
+
+.machines-workspace { width: 100%; min-width: 0; overflow-y: auto; }
+.files-workspace { width: 100%; min-width: 0; }

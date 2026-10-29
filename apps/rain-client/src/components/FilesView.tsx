@@ -26,9 +26,12 @@ export const FilesView: React.FC<FilesViewProps> = ({
   onWriteFile,
 }) => {
   const [editingFile, setEditingFile] = useState<{ path: string; name: string; content: string } | null>(null);
+  const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const handleFileClick = async (entry: FileEntry) => {
+    setError('');
+    try {
     if (entry.is_dir) {
       await onOpenDirectory(entry.path);
     } else if (entry.is_editable) {
@@ -39,6 +42,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
       }
       setEditingFile({ path: entry.path, name: entry.name, content: res.content });
     }
+    } catch(e: any) { setError(e.message); }
   };
 
   const handleSave = async () => {
@@ -46,6 +50,8 @@ export const FilesView: React.FC<FilesViewProps> = ({
     setIsSaving(true);
     try {
       await onWriteFile(editingFile.path, editingFile.content);
+      setError('');
+    } catch(e: any) { setError(e.message);
     } finally {
       setIsSaving(false);
     }
@@ -69,6 +75,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
           </button>
         </div>
 
+        {error && <p role="alert">{error}</p>}
         <textarea
           style={{
             flex: 1,
@@ -95,7 +102,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   return (
     <div className="files-screen">
       <div className="section-header-row">
-        <h2 className="section-title">Host File System</h2>
+        <h2 className="section-title">File explorer</h2>
         <button
           className="icon-button"
           onClick={() => onOpenDirectory(currentPath)}
@@ -106,6 +113,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
         </button>
       </div>
 
+      {error && <p role="alert">{error}</p>}
       <div className="breadcrumb-strip">
         <span>Path:</span>
         <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{currentPath}</span>

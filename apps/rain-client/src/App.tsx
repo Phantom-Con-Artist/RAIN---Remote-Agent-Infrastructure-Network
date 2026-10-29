@@ -1,3 +1,4 @@
+import { FilesWorkspace } from './components/FilesWorkspace';
 import { AgentWorkbench } from './components/AgentWorkbench';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -14,7 +15,6 @@ import {
   AgentSession,
   MachineOverview,
   InstalledApp,
-  FileEntry,
   NetworkMeshStatus,
   HubTopologyStatus,
   PairingTicket,
@@ -24,7 +24,6 @@ import { apiRequest, setAuthToken } from './api';
 import { Header } from './components/Header';
 import { ChatsView } from './components/ChatsView';
 import { MachinesView } from './components/MachinesView';
-import { FilesView } from './components/FilesView';
 import { MeshView } from './components/MeshView';
 import { PairingModal } from './components/PairingModal';
 import { NewGroupModal } from './components/NewGroupModal';
@@ -45,6 +44,7 @@ export const App: React.FC = () => {
   };
 
   // Navigation tab
+  const [selectedMachine, setSelectedMachine] = useState('');
   const [currentTab, setCurrentTab] = useState<TabType>('chats');
 
   // Connection & Telemetry
@@ -62,10 +62,6 @@ export const App: React.FC = () => {
   // Machines state
   const [machines, setMachines] = useState<MachineOverview[]>([]);
   const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
-
-  // Files state
-  const [currentPath, setCurrentPath] = useState<string>('~');
-  const [files, setFiles] = useState<FileEntry[]>([]);
 
   // Topology state
   const [topology, setTopology] = useState<HubTopologyStatus | null>(null);
@@ -148,16 +144,6 @@ export const App: React.FC = () => {
     } catch {}
   }, []);
 
-  const loadDirectory = useCallback(async (pathStr: string) => {
-    try {
-      const res = await apiRequest<FileEntry[]>(`/api/v1/fs/list?path=${encodeURIComponent(pathStr)}`);
-      setCurrentPath(pathStr);
-      setFiles(res.data);
-    } catch (e: any) {
-      showToast(`Error opening directory: ${e.message}`);
-    }
-  }, [showToast]);
-
   const loadTopology = useCallback(async () => {
     try {
       const res = await apiRequest<HubTopologyStatus>('/api/v1/hub/topology');
@@ -185,10 +171,9 @@ export const App: React.FC = () => {
     loadSessions();
     loadMachines();
     loadApps();
-    loadDirectory('~');
     loadTopology();
     loadMeshStatus();
-  }, [loadConversations, loadSessions, loadMachines, loadApps, loadDirectory, loadTopology, loadMeshStatus]);
+  }, [loadConversations, loadSessions, loadMachines, loadApps, loadTopology, loadMeshStatus]);
 
   // Load messages whenever active conversation changes
   useEffect(() => {
@@ -330,29 +315,10 @@ export const App: React.FC = () => {
         command: cmd,
         is_sudo: isSudo,
         sudo_password: password || null,
-        cwd: currentPath === '~' ? '.' : currentPath,
+        cwd: '.',
       }),
     });
     return res.data;
-  };
-
-  const handleReadFile = async (pathStr: string, name: string) => {
-    const res = await apiRequest<{ content: string; is_binary: boolean }>(
-      `/api/v1/fs/read?path=${encodeURIComponent(pathStr)}`
-    );
-    return res.data;
-  };
-
-  const handleWriteFile = async (pathStr: string, content: string) => {
-    try {
-      await apiRequest('/api/v1/fs/write', {
-        method: 'POST',
-        body: JSON.stringify({ path: pathStr, content }),
-      });
-      showToast('File saved to machine');
-    } catch (e: any) {
-      showToast(`Save failed: ${e.message}`);
-    }
   };
 
   const handleRevokeDevice = async (deviceId: string) => {
@@ -445,11 +411,10 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentTab === 'machines' && <AgentWorkbench sessions={sessions} onRefresh={loadSessions} onOpenChat={async (id) => {
+        {currentTab === 'machines' && <div className="machines-workspace"><AgentWorkbench machine={selectedMachine} onMachineChange={setSelectedMachine} sessions={sessions} onRefresh={loadSessions} onOpenChat={async (id) => {
           const res = await apiRequest<Conversation>('/api/v1/conversations/direct', { method: 'POST', body: JSON.stringify({agent_id: id}) });
           await loadConversations(); setActiveConversationId(res.data.id); setCurrentTab('chats'); setIsMobileChatOpen(true);
-        }} />}
-        {currentTab === 'machines' && (
+        }} />
           <MachinesView
             machines={machines}
             installedApps={installedApps}
@@ -457,16 +422,10 @@ export const App: React.FC = () => {
             onExecuteTerminal={handleExecuteTerminal}
             onTriggerBatteryEvacuate={handleTriggerBatteryEvacuate}
           />
-        )}
+        </div>}
 
         {currentTab === 'files' && (
-          <FilesView
-            currentPath={currentPath}
-            files={files}
-            onOpenDirectory={loadDirectory}
-            onReadFile={handleReadFile}
-            onWriteFile={handleWriteFile}
-          />
+          <FilesWorkspace machine={selectedMachine} onMachineChange={setSelectedMachine} />
         )}
 
         {currentTab === 'mesh' && (
@@ -510,7 +469,6 @@ export const App: React.FC = () => {
           className={`nav-tab-button ${currentTab === 'files' ? 'active' : ''}`}
           onClick={() => {
             setCurrentTab('files');
-            loadDirectory(currentPath);
           }}
         >
           <FiFolder className="nav-tab-icon" />

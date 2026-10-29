@@ -17,6 +17,45 @@ pub(super) async fn handle(
     let path = req.uri().path().to_string();
     let query = req.uri().query().map(|q| q.to_string());
 
+    let machine = get_query_param(query.as_deref(), "machine");
+    if path.starts_with("/api/v1/fs/") {
+        let operation = match (method, path.as_str()) {
+            (Method::GET, "/api/v1/fs/list") => {
+                serde_json::json!({"action":"list", "path":get_query_param(query.as_deref(), "path")})
+            }
+            (Method::GET, "/api/v1/fs/read") => {
+                serde_json::json!({"action":"read", "path":get_query_param(query.as_deref(), "path")})
+            }
+            (Method::POST, "/api/v1/fs/write") => {
+                let body = req.into_body().collect().await?.to_bytes();
+                match serde_json::from_slice::<WriteFileRequest>(&body) {
+                    Ok(write) => {
+                        serde_json::json!({"action":"write", "path":write.path, "content":write.content})
+                    }
+                    Err(e) => {
+                        return Ok(json_response(
+                            StatusCode::BAD_REQUEST,
+                            &ApiResponse::<()>::err(e.to_string()),
+                        ))
+                    }
+                }
+            }
+            _ => {
+                return Ok(json_response(
+                    StatusCode::METHOD_NOT_ALLOWED,
+                    &ApiResponse::<()>::err("Unsupported file operation"),
+                ))
+            }
+        };
+        return match rain_core::host_access::operate(machine.as_deref(), operation).await {
+            Ok(data) => Ok(json_response(StatusCode::OK, &ApiResponse::ok(data))),
+            Err(e) => Ok(json_response(
+                StatusCode::BAD_REQUEST,
+                &ApiResponse::<()>::err(e),
+            )),
+        };
+    }
+
     match (method, path.as_str()) {
         // --- MACHINES & REMOTE WORKBENCH ---
         (Method::GET, "/api/v1/machines/overview") => {
@@ -40,50 +79,6 @@ pub(super) async fn handle(
                 ],
             };
             Ok(json_response(StatusCode::OK, &ApiResponse::ok(status)))
-        }
-
-        (Method::GET, "/api/v1/fs/list") => {
-            let req_path =
-                get_query_param(query.as_deref(), "path").unwrap_or_else(|| "~".to_string());
-            match state.remote.list_directory(&req_path) {
-                Ok(entries) => Ok(json_response(StatusCode::OK, &ApiResponse::ok(entries))),
-                Err(e) => Ok(json_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    &ApiResponse::<()>::err(e),
-                )),
-            }
-        }
-
-        (Method::GET, "/api/v1/fs/read") => {
-            let req_path = get_query_param(query.as_deref(), "path").unwrap_or_default();
-            match state.remote.read_file(&req_path) {
-                Ok(res) => Ok(json_response(StatusCode::OK, &ApiResponse::ok(res))),
-                Err(e) => Ok(json_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    &ApiResponse::<()>::err(e),
-                )),
-            }
-        }
-
-        (Method::POST, "/api/v1/fs/write") => {
-            let body_bytes = req.into_body().collect().await?.to_bytes();
-            match serde_json::from_slice::<WriteFileRequest>(&body_bytes) {
-                Ok(write_req) => match state.remote.write_file(&write_req.path, &write_req.content)
-                {
-                    Ok(_) => Ok(json_response(
-                        StatusCode::OK,
-                        &ApiResponse::ok("File saved successfully to machine"),
-                    )),
-                    Err(e) => Ok(json_response(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        &ApiResponse::<()>::err(e),
-                    )),
-                },
-                Err(e) => Ok(json_response(
-                    StatusCode::BAD_REQUEST,
-                    &ApiResponse::<()>::err(format!("Invalid write request: {}", e)),
-                )),
-            }
         }
 
         (Method::GET, "/api/v1/apps/installed") => {

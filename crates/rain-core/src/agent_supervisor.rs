@@ -55,16 +55,7 @@ impl AgentSupervisor {
         });
 
         let mut cmd = if let Some(machine) = &req.machine {
-            let hosts: HashMap<String, String> = serde_json::from_str(
-                &std::env::var("RAIN_SSH_HOSTS").unwrap_or_else(|_| "{}".into()),
-            )
-            .map_err(|e| e.to_string())?;
-            let target = hosts
-                .get(machine)
-                .ok_or("Machine is not configured in RAIN_SSH_HOSTS")?;
-            if target.starts_with('-') {
-                return Err("Invalid SSH target".into());
-            }
+            let target = crate::host_access::ssh_target(machine)?;
             let mut remote = format!("cd {} && exec ", crate::terminal::quote(&cwd));
             remote.push_str(&crate::terminal::quote(&req.command));
             for arg in &req.args {
@@ -82,7 +73,7 @@ impl AgentSupervisor {
                 "StrictHostKeyChecking=yes",
                 if req.interactive { "-tt" } else { "-T" },
                 "--",
-                target,
+                &target,
                 &remote,
             ]);
             c

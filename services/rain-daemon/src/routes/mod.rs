@@ -17,10 +17,20 @@ fn get_query_param(query: Option<&str>, key: &str) -> Option<String> {
         let mut parts = pair.splitn(2, '=');
         if parts.next()? == key {
             let val = parts.next()?;
-            let decoded = val
-                .replace("%20", " ")
-                .replace("%2F", "/")
-                .replace("%7E", "~");
+            let mut bytes = Vec::new();
+            let raw = val.as_bytes();
+            let mut i = 0;
+            while i < raw.len() {
+                if raw[i] == b'%' && i + 2 < raw.len() {
+                    let hex = std::str::from_utf8(&raw[i + 1..i + 3]).ok()?;
+                    bytes.push(u8::from_str_radix(hex, 16).ok()?);
+                    i += 3;
+                } else {
+                    bytes.push(if raw[i] == b'+' { b' ' } else { raw[i] });
+                    i += 1;
+                }
+            }
+            let decoded = String::from_utf8(bytes).ok()?;
             Some(decoded)
         } else {
             None

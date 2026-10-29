@@ -66,6 +66,21 @@ pub(super) async fn handle(
             Ok(json_response(StatusCode::OK, &ApiResponse::ok(agents)))
         }
 
+        (Method::GET, "/api/v1/agents/catalog") => {
+            let machine = super::get_query_param(req.uri().query(), "machine");
+            match rain_core::host_access::operate(
+                machine.as_deref(),
+                serde_json::json!({"action":"scan"}),
+            )
+            .await
+            {
+                Ok(data) => Ok(json_response(StatusCode::OK, &ApiResponse::ok(data))),
+                Err(e) => Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &ApiResponse::<()>::err(e),
+                )),
+            }
+        }
         (Method::GET, "/api/v1/agents/machines") => {
             let hosts: std::collections::HashMap<String, String> = serde_json::from_str(
                 &std::env::var("RAIN_SSH_HOSTS").unwrap_or_else(|_| "{}".into()),
