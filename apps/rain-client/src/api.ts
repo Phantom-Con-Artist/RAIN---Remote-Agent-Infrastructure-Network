@@ -1,6 +1,24 @@
 // Typed API Client and Formatters for RAIN Client
 
-let hostUrl = localStorage.getItem('rain_host_url') || 'http://localhost:7890';
+function getDefaultHostUrl(): string {
+  if (typeof window !== 'undefined' && window.location) {
+    const origin = window.location.origin;
+    if (origin && origin !== 'null' && !origin.startsWith('file:')) {
+      const saved = localStorage.getItem('rain_host_url');
+      if (saved && saved.trim() !== '') {
+        // If saved is localhost but current page is loaded from a network IP, prefer current origin
+        if (saved.includes('localhost') && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          return origin;
+        }
+        return saved;
+      }
+      return origin;
+    }
+  }
+  return 'http://localhost:7890';
+}
+
+let hostUrl = getDefaultHostUrl();
 let authToken = localStorage.getItem('rain_auth_token') || '';
 
 export function getHostUrl(): string {
