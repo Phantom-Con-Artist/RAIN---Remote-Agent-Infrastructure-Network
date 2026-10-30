@@ -31,7 +31,7 @@ pub(crate) fn json_response<T: serde::Serialize>(
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"))
         .header(
             ACCESS_CONTROL_ALLOW_METHODS,
-            HeaderValue::from_static("GET, POST, OPTIONS, PUT, DELETE"),
+            HeaderValue::from_static("GET, POST, OPTIONS, PUT, PATCH, DELETE"),
         )
         .header(
             ACCESS_CONTROL_ALLOW_HEADERS,
@@ -50,7 +50,7 @@ pub(crate) fn cors_preflight() -> Response<BoxBody<Bytes, hyper::Error>> {
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"))
         .header(
             ACCESS_CONTROL_ALLOW_METHODS,
-            HeaderValue::from_static("GET, POST, OPTIONS, PUT, DELETE"),
+            HeaderValue::from_static("GET, POST, OPTIONS, PUT, PATCH, DELETE"),
         )
         .header(
             ACCESS_CONTROL_ALLOW_HEADERS,

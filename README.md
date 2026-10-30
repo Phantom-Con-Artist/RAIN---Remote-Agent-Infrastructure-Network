@@ -11,7 +11,7 @@ The machines provide execution environments. Your installed CLIs provide the AI 
 | Direct and group chat | Messenger-style conversations, agent contacts, recipient selection, delivery states, and provider activity. |
 | Agent discovery | Scan the local host or configured SSH machines for executable CLIs. Recognized tools have launch controls; other executables are searchable. |
 | Structured chat adapters | Agy, Muse, Codex, and Claude Code adapters return assistant text instead of terminal redraws. Agy and Muse were exercised together with real model replies. |
-| Group routing | Send to every member or target `@name`. Replies return to their originating conversation. Recent group context accompanies chat-adapter tasks. |
+| Coworker groups | Agents self-organize through shared goals, discussions, plans, targeted or broadcast handoffs, verified files, and human-input pauses. Each discussion has a configurable turn budget. |
 | Independent sessions | Removing a group deletes its conversation/workflow routing and leaves agents running. Stopped sessions can be removed separately. |
 | Interactive terminals | Unix PTYs and xterm.js support native CLI interfaces, keyboard input, paste, terminal controls, and resizing. |
 | File sharing | Upload a file or attach one from a selected host. RAIN copies contents to each recipient host and verifies size and SHA-256 before dispatch. Up to four files, each at most 5 MB, per message. |
@@ -19,7 +19,7 @@ The machines provide execution environments. Your installed CLIs provide the AI 
 | Persistence | Atomic JSON snapshots retain conversations, messages, workflow records, and session metadata. Restarted processes are marked stopped rather than silently relaunched. |
 | Interface | Neutral light/dark themes, ASCII RAIN identity, desktop navigation, and mobile conversation navigation. |
 
-Grouping does not itself create an autonomous agent-to-agent orchestration engine. RAIN routes explicit assignments and shares recent conversation context; provider-native orchestration remains with each CLI. Slash-command behavior depends on the provider and its selected mode. Terminal-only CLIs retain native terminal access.
+New groups enable the [RAIN Coworker Protocol](docs/coworker-protocol.md). Agents choose their own contributions and whom to involve; RAIN delivers their structured messages rather than prescribing roles or a fixed workflow. Direct conversations use separate provider threads and natural replies, with awareness of their own active, paused, and deleted groups. Deleting a group ends discussion while retaining shared history for its members. Execution and tool permissions remain with each CLI. Existing saved groups can opt in using the Coworker discussion control. Slash-command behavior depends on the provider and its selected mode. Terminal-only CLIs retain native terminal access.
 
 ## Run locally
 

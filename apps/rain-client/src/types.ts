@@ -38,6 +38,7 @@ export interface ChatMessage {
   status: 'sent' | 'delivered' | 'read' | 'failed';
   attachments: ChatAttachment[];
   job_delegation?: JobDelegation;
+  coworker?: CoworkerEnvelope;
   timestamp: string;
 }
 
@@ -50,6 +51,7 @@ export interface Conversation {
   last_message: string | null;
   last_message_time: string | null;
   unread_count: number;
+  collaboration?: CollaborationState | null;
 }
 
 export interface AgentSession {
@@ -161,3 +163,29 @@ export interface NetworkMeshStatus {
 export type TabType = 'chats' | 'machines' | 'files' | 'mesh';
 export type ThemeMode = 'dark' | 'light';
 
+
+export interface CoworkerEnvelope {
+  rain_coworker: number;
+  run_id: string;
+  kind: 'discuss' | 'plan' | 'handoff' | 'human_input' | 'complete';
+  text: string;
+  to: string[];
+  files: string[];
+}
+
+export interface CollaborationState {
+  enabled: boolean;
+  max_turns: number;
+  remaining_turns: number;
+  run_id: string | null;
+  waiting_for_human: boolean;
+  human_request: string | null;
+  human_goal: string | null;
+  human_direction: string | null;
+}
+
+export interface GroupMemory {
+  conversation: Conversation;
+  messages: ChatMessage[];
+  deleted_at: string | null;
+}

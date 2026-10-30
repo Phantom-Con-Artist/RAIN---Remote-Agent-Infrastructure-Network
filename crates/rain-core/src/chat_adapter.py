@@ -10,18 +10,22 @@ import tempfile
 import uuid
 
 provider, executable = sys.argv[1:3]
-session = None
-muse_session = str(uuid.uuid4())
+sessions = {}
+muse_sessions = {}
 
 def emit(kind, **data):
     print(json.dumps(dict(rain_chat=kind, **data)), flush=True)
 
 for raw in sys.stdin:
     prompt_file = None
+    request = {}
+    conversation = None
+    session = None
     try:
         request = json.loads(raw)
         prompt = request['text']
         conversation = request['conversation_id']
+        session = sessions.get(conversation)
         emit('activity', state='working')
         if provider == 'codex_chat':
             args = [executable, 'exec'] + (['resume', session] if session else []) + ['--json', '-']
@@ -36,7 +40,7 @@ for raw in sys.stdin:
             prompt_file = tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', encoding='utf-8')
             prompt_file.write(prompt)
             prompt_file.flush()
-            args = [executable, 'exec', '--json', '--session-id', muse_session, '--prompt-file', prompt_file.name]
+            args = [executable, 'exec', '--json', '--session-id', muse_sessions.setdefault(conversation, str(uuid.uuid4())), '--prompt-file', prompt_file.name]
             input_text = ''
         else:
             raise ValueError('Unsupported chat provider')
@@ -91,6 +95,8 @@ for raw in sys.stdin:
     except Exception as error:
         emit('reply', conversation_id=request.get('conversation_id', '') if 'request' in locals() else '', text=f'Agent error: {error}')
     finally:
+        if conversation is not None and session:
+            sessions[conversation] = session
         if prompt_file is not None:
             prompt_file.close()
         emit('activity', state='online')

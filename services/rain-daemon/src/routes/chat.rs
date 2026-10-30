@@ -185,6 +185,62 @@ pub(super) async fn handle(
             }
         }
 
+        (Method::PATCH, path)
+            if path.starts_with("/api/v1/conversations/") && path.ends_with("/collaboration") =>
+        {
+            let parts: Vec<_> = path.split('/').collect();
+            let body = req.into_body().collect().await?.to_bytes();
+            let result = match (
+                parts.len(),
+                parts.get(4).and_then(|v| uuid::Uuid::parse_str(v).ok()),
+                serde_json::from_slice::<rain_protocol::CollaborationRequest>(&body),
+            ) {
+                (6, Some(id), Ok(settings)) => {
+                    state.chat.configure_collaboration(id, settings).await
+                }
+                _ => Err("Invalid conversation or coworker settings".into()),
+            };
+            Ok(match result {
+                Ok(c) => json_response(StatusCode::OK, &ApiResponse::ok(c)),
+                Err(e) => json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e)),
+            })
+        }
+        (Method::POST, path)
+            if path.starts_with("/api/v1/conversations/") && path.ends_with("/resume") =>
+        {
+            let parts: Vec<_> = path.split('/').collect();
+            let result = match (
+                parts.len(),
+                parts.get(4).and_then(|v| uuid::Uuid::parse_str(v).ok()),
+            ) {
+                (6, Some(id)) => state.chat.resume_conversation(id).await,
+                _ => Err("Invalid conversation UUID".into()),
+            };
+            Ok(match result {
+                Ok(c) => json_response(StatusCode::OK, &ApiResponse::ok(c)),
+                Err(e) => json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e)),
+            })
+        }
+
+        (Method::GET, path)
+            if path.starts_with("/api/v1/sessions/") && path.ends_with("/groups") =>
+        {
+            let parts: Vec<_> = path.split('/').collect();
+            match (
+                parts.len(),
+                parts.get(4).and_then(|id| uuid::Uuid::parse_str(id).ok()),
+            ) {
+                (6, Some(id)) => Ok(json_response(
+                    StatusCode::OK,
+                    &ApiResponse::ok(state.chat.group_context(id).await),
+                )),
+                _ => Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &ApiResponse::<()>::err("Invalid agent session UUID"),
+                )),
+            }
+        }
+
         (Method::GET, "/api/v1/sessions") => {
             let sessions = state.chat.list_sessions().await;
             Ok(json_response(StatusCode::OK, &ApiResponse::ok(sessions)))

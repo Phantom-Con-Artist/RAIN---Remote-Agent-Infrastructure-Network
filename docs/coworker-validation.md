@@ -1,0 +1,32 @@
+# Coworker validation — 30 October 2026
+
+Validation used installed Agy and Muse CLIs through RAIN's real chat adapters on Linux, with an isolated daemon at localhost:17901 and separate temporary workspaces. Both used their existing provider accounts. The ordinary RAIN daemon and user workspaces were left running separately. No backup, deployment or remote operation was performed; the test task was to draft and peer-review a small backup-verification checklist.
+
+## Observed direct behavior
+
+- Before a group existed, both agents identified the interaction as direct chat and reported knowing no shared groups.
+- With a shared group active, both described its actual goal, checklist artifacts, peer review, and current discussion stage from their direct conversations.
+- After pause, Agy identified the group as paused without being told its state in the question.
+- After deletion, both retained the group's purpose and planning history and stated that the deleted channel could not receive further discussion. They continued answering naturally in direct chat.
+
+## Native response framing defects found and fixed
+
+Agy created a checklist file and selected Muse for independent review. RAIN copied that file into Muse's local inbox; the source and destination SHA-256 values matched. Muse produced a substantive review file.
+
+The first live run exposed Muse returning two complete protocol envelopes concatenated together. A subsequent run exposed a complete envelope followed by an ordinary closing sentence. The original single-object parser displayed these replies without forwarding the review. RAIN now accepts a bounded contiguous sequence of up to four envelopes, suppresses exact duplicates within a response, and displays trailing prose without treating it as a routing instruction. Leading prose is not searched for embedded commands. Truncated JSON tails invalidate the batch before routing. Regression coverage reproduces these native response shapes.
+
+## Final live rerun
+
+With the framing fixes loaded in a freshly restarted test daemon, Agy created `checklist_draft.md` and addressed Muse for review. Muse returned `review_checklist_v2.md` as a routed `discuss` message with a verified checksum. Its source and recipient inbox copies both hashed to `5852253b62ece7620dbcd99508712b5d6ed0b6ea5f3e40d8d26ee5a495028104`.
+
+Muse challenged the draft's minimum throughput, depth of nightly consistency checks, and failure-path cleanup. Both agents then submitted valid `human_input` messages with a concrete approval question. The group stopped autonomous handoffs. Their subsequent direct replies correctly described the actual draft, review, revised result and waiting state. Agy recognized the later pause. Both retained the result after deletion and identified the deleted channel as closed. The test runner then stopped both test agent sessions.
+
+The roles and substantive review were selected by the agents after receiving a common goal and a request for peer review; RAIN did not prescribe an author/reviewer state machine. These observations demonstrate one useful self-organized exchange, not a guarantee that every model/task will converge usefully.
+
+## Automated and rendered checks
+
+`cargo test -p rain-core -p rain-protocol --tests` passes 19 tests, including real local adapter processes with deterministic provider fixtures. The suite covers membership and run scoping, direct/group provider-thread separation for Codex/Claude/Agy/Muse, binary transfer integrity, path and symlink boundaries, autonomous handoffs, human-input pauses, turn budgets, pause/resume, archive persistence, private-direct exclusion, and native response framing.
+
+The client production build, TypeScript check, daemon build, and whitespace checks pass. HTTP checks verify group context for members and exclusion for nonmembers, policy changes, pause/resume, deletion history, and PATCH preflight support. Browser checks at 320, 390 and 1440 pixels show no horizontal page overflow and keep the composer visible. The discussion toggle, pause/resume, and direct-chat disclosure of deleted group history were exercised. Real group and direct conversations were also inspected in the browser.
+
+This evidence verifies the tested coordination and memory behavior. It does not establish unrestricted emergent intelligence, support for every provider output variation, physical-device behavior, or transfers over configured SSH hosts. Membership belongs to a session UUID; newly launched sessions do not automatically inherit old session memberships.

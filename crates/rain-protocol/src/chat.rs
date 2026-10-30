@@ -55,6 +55,8 @@ pub struct ChatMessage {
     pub status: MessageDeliveryStatus,
     pub attachments: Vec<ChatAttachment>,
     pub job_delegation: Option<crate::remote::JobDelegation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coworker: Option<CoworkerEnvelope>,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -68,6 +70,8 @@ pub struct Conversation {
     pub last_message: Option<String>,
     pub last_message_time: Option<DateTime<Utc>>,
     pub unread_count: usize,
+    #[serde(default)]
+    pub collaboration: Option<CollaborationState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,4 +104,72 @@ pub struct CreateConversationRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DirectChatRequest {
     pub agent_id: String,
+}
+
+/// RAIN Coworker Protocol v1. Only complete, scoped chat replies are routable.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CoworkerKind {
+    Discuss,
+    Plan,
+    Handoff,
+    HumanInput,
+    Complete,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CoworkerEnvelope {
+    pub rain_coworker: u8,
+    pub run_id: uuid::Uuid,
+    pub kind: CoworkerKind,
+    pub text: String,
+    #[serde(default)]
+    pub to: Vec<String>,
+    /// Relative paths in the sending agent's own workspace, never the hub's.
+    #[serde(default)]
+    pub files: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollaborationState {
+    pub enabled: bool,
+    pub max_turns: u8,
+    pub remaining_turns: u8,
+    pub run_id: Option<uuid::Uuid>,
+    pub waiting_for_human: bool,
+    pub human_request: Option<String>,
+    #[serde(default)]
+    pub human_goal: Option<String>,
+    #[serde(default)]
+    pub human_direction: Option<String>,
+}
+impl Default for CollaborationState {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_turns: 8,
+            remaining_turns: 8,
+            run_id: None,
+            waiting_for_human: false,
+            human_request: None,
+            human_goal: None,
+            human_direction: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CollaborationRequest {
+    pub enabled: bool,
+    pub max_turns: u8,
+}
+
+/// Membership-scoped group history. A deleted group is remembered but never routable.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupMemory {
+    pub conversation: Conversation,
+    pub messages: Vec<ChatMessage>,
+    pub deleted_at: Option<DateTime<Utc>>,
 }

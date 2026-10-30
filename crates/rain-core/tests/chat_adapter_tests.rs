@@ -104,3 +104,19 @@ async fn adapters_route_group_and_direct_replies_without_crosstalk() {
     pump.abort();
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn all_provider_threads_are_isolated_by_rain_conversation() {
+    let output = std::process::Command::new("python3")
+        .arg(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/adapter_isolation_tests.py"
+        ))
+        .output()
+        .expect("Python 3 is required for RAIN chat adapters");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

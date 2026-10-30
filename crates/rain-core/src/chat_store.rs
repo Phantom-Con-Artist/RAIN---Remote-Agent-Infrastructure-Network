@@ -10,11 +10,13 @@ use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct ChatStore {
+    pub(crate) collaboration_lock: Arc<tokio::sync::Mutex<()>>,
     pub(crate) supervisor: crate::AgentSupervisor,
     pub(crate) conversations: Arc<RwLock<HashMap<uuid::Uuid, Conversation>>>,
     pub(crate) messages: Arc<RwLock<HashMap<uuid::Uuid, Vec<ChatMessage>>>>,
     pub(crate) persistence_lock: Arc<tokio::sync::Mutex<()>>,
     pub(crate) jobs: Arc<RwLock<HashMap<uuid::Uuid, JobDelegation>>>,
+    pub(crate) group_memories: Arc<RwLock<HashMap<uuid::Uuid, rain_protocol::GroupMemory>>>,
 }
 
 impl ChatStore {
@@ -25,10 +27,12 @@ impl ChatStore {
     pub fn with_supervisor(supervisor: crate::AgentSupervisor) -> Self {
         Self {
             supervisor,
+            collaboration_lock: Arc::new(tokio::sync::Mutex::new(())),
             persistence_lock: Arc::new(tokio::sync::Mutex::new(())),
             conversations: Arc::new(RwLock::new(HashMap::new())),
             messages: Arc::new(RwLock::new(HashMap::new())),
             jobs: Arc::new(RwLock::new(HashMap::new())),
+            group_memories: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -167,6 +171,7 @@ impl ChatStore {
             }),
             last_message_time: Some(chrono::Utc::now()),
             unread_count: 0,
+            collaboration: is_group.then(Default::default),
         };
 
         let initial_system_msg = ChatMessage {
@@ -177,7 +182,7 @@ impl ChatStore {
             sender_type: SenderType::System,
             text: if is_group {
                 format!(
-                    "Group '{}' established. Agents connected across machines.",
+                    "Coworker group '{}' is ready. Share a goal to start planning together.",
                     title
                 )
             } else {
@@ -186,6 +191,7 @@ impl ChatStore {
             status: MessageDeliveryStatus::Read,
             attachments: vec![],
             job_delegation: None,
+            coworker: None,
             timestamp: chrono::Utc::now(),
         };
 
@@ -203,10 +209,9 @@ impl ChatStore {
     }
 
     pub async fn delete_conversation(&self, conv_id: uuid::Uuid) -> Result<(), String> {
+        let _serial = self.collaboration_lock.lock().await;
         let mut conv_lock = self.conversations.write().await;
-        if conv_lock.remove(&conv_id).is_none() {
-            return Err("Conversation not found".to_string());
-        }
+        let mut conversation = conv_lock.remove(&conv_id).ok_or("Conversation not found")?;
 
         let mut msg_lock = self.messages.write().await;
         let removed = msg_lock.remove(&conv_id).unwrap_or_default();
@@ -224,13 +229,31 @@ impl ChatStore {
                 jobs.remove(&id);
             }
         }
+        if conversation.is_group {
+            conversation.is_active = false;
+            if let Some(state) = conversation.collaboration.as_mut() {
+                state.run_id = None;
+            }
+            self.group_memories.write().await.insert(
+                conv_id,
+                rain_protocol::GroupMemory {
+                    conversation,
+                    messages: removed,
+                    deleted_at: Some(chrono::Utc::now()),
+                },
+            );
+        }
         Ok(())
     }
 
     pub async fn stop_conversation(&self, conv_id: uuid::Uuid) -> Result<Conversation, String> {
+        let _serial = self.collaboration_lock.lock().await;
         let mut conv_lock = self.conversations.write().await;
         if let Some(c) = conv_lock.get_mut(&conv_id) {
             c.is_active = false;
+            if let Some(state) = c.collaboration.as_mut() {
+                state.run_id = None;
+            }
             c.last_message = Some("Group stopped by admin".to_string());
             c.last_message_time = Some(chrono::Utc::now());
 
@@ -247,6 +270,7 @@ impl ChatStore {
                 status: MessageDeliveryStatus::Read,
                 attachments: vec![],
                 job_delegation: None,
+                coworker: None,
                 timestamp: chrono::Utc::now(),
             });
 
@@ -300,6 +324,7 @@ impl ChatStore {
         target_session: Option<String>,
         attachments: Option<Vec<ChatAttachment>>,
     ) -> Result<ChatMessage, String> {
+        let _serial = self.collaboration_lock.lock().await;
         let atts = attachments.unwrap_or_default();
         let is_active = {
             let conv_lock = self.conversations.read().await;
@@ -391,6 +416,7 @@ impl ChatStore {
             status: MessageDeliveryStatus::Sent,
             attachments: atts.clone(),
             job_delegation: None,
+            coworker: None,
             timestamp: chrono::Utc::now(),
         };
 
@@ -413,6 +439,16 @@ impl ChatStore {
             }
         }
 
+        if let Some(c) = self.conversations.write().await.get_mut(&conv_id) {
+            if let Some(state) = c.collaboration.as_mut() {
+                state.human_goal.get_or_insert_with(|| input.chars().take(16000).collect());
+                state.human_direction = Some(input.chars().take(16000).collect());
+                state.run_id = Some(uuid::Uuid::new_v4());
+                state.remaining_turns = state.max_turns;
+                state.waiting_for_human = false;
+                state.human_request = None;
+            }
+        }
         for recipient in recipients {
             let id = uuid::Uuid::parse_str(&recipient).map_err(|_| "Invalid session ID")?;
             let provider = self
@@ -422,28 +458,9 @@ impl ChatStore {
                 .map(|a| a.provider)
                 .unwrap_or_default();
             let task = if conversation.is_group && provider.ends_with("_chat") {
-                let history = self.get_messages(conv_id).await;
-                let context = history
-                    .iter()
-                    .rev()
-                    .skip(1)
-                    .take(12)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .map(|m| {
-                        format!(
-                            "{}: {}",
-                            m.sender_name,
-                            m.text.chars().take(2000).collect::<String>()
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                format!(
-                    "RAIN group: {}\nRecent shared conversation:\n{}\n\nYour assigned message:\n{}",
-                    conversation.title, context, input
-                )
+                self.coworker_prompt(conv_id, id, input).await
+            } else if provider.ends_with("_chat") {
+                self.direct_prompt(id, input).await
             } else {
                 input.to_string()
             };
@@ -451,7 +468,18 @@ impl ChatStore {
                 Some(files) => format!("{}\n\nShared files copied to your machine (read these local paths):\n{}", task, files.join("\n\n")),
                 None => task,
             };
-            self.supervisor.send_chat_input(id, &task, conv_id).await?;
+            if let Err(error) = self.supervisor.send_chat_input(id, &task, conv_id).await {
+                if let Some(message) = self.messages.write().await.get_mut(&conv_id)
+                    .and_then(|messages| messages.iter_mut().find(|m| m.id == msg_id)) {
+                    message.status = MessageDeliveryStatus::Failed;
+                }
+                if let Some(state) = self.conversations.write().await.get_mut(&conv_id).and_then(|c| c.collaboration.as_mut()) {
+                    state.run_id = None;
+                    state.waiting_for_human = true;
+                    state.human_request = Some("Message delivery failed. Some agents may have received it; review before retrying.".into());
+                }
+                return Err(error);
+            }
         }
         let mut human_msg = human_msg;
         human_msg.status = MessageDeliveryStatus::Delivered;
@@ -464,6 +492,9 @@ impl ChatStore {
     }
 
     pub async fn record_event(&self, event: rain_protocol::AgentEvent) {
+        if let rain_protocol::AgentEvent::ChatReply { agent_id, conversation_id, text } = &event {
+            if self.record_coworker_reply(*agent_id, *conversation_id, text).await { return; }
+        }
         // PTY redraws are terminal state, not conversation messages.
         if matches!(&event, rain_protocol::AgentEvent::Output { stream, .. } if stream == "terminal")
         {
@@ -517,6 +548,7 @@ impl ChatStore {
                 status: MessageDeliveryStatus::Delivered,
                 attachments: vec![],
                 job_delegation: None,
+                coworker: None,
                 timestamp: chrono::Utc::now(),
             });
             conv.last_message = Some(text.clone());
@@ -684,6 +716,7 @@ impl ChatStore {
             status: MessageDeliveryStatus::Delivered,
             attachments: job.shared_artifacts.clone(),
             job_delegation: Some(job.clone()),
+            coworker: None,
             timestamp: chrono::Utc::now(),
         };
 
@@ -706,6 +739,7 @@ impl ChatStore {
             status: MessageDeliveryStatus::Delivered,
             attachments: vec![],
             job_delegation: Some(job),
+            coworker: None,
             timestamp: chrono::Utc::now(),
         };
 

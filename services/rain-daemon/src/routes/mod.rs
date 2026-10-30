@@ -96,7 +96,10 @@ async fn dispatch(req: Request<Incoming>, state: AppState) -> Result<HttpRespons
         }
     }
 
-    if path.starts_with("/api/v1/conversations") || path == "/api/v1/sessions" {
+    if path.starts_with("/api/v1/conversations")
+        || path == "/api/v1/sessions"
+        || path.starts_with("/api/v1/sessions/")
+    {
         chat::handle(req, &state).await
     } else if path.starts_with("/api/v1/auth/") {
         auth::handle(req, &state).await

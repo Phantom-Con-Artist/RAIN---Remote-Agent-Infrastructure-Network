@@ -70,6 +70,13 @@ def run(req):
                     continue
         return sorted(entries, key=lambda e: (e['name'] != '..', not e['is_dir'], e['name'].lower()))
     if action == 'export':
+        if req.get('workspace_root'):
+            root = os.path.realpath(req['workspace_root'])
+            path = os.path.realpath(os.path.join(root, req['path']))
+            if os.path.commonpath([root, path]) != root:
+                raise ValueError('Shared file must stay inside the sending workspace')
+            if not os.path.isfile(path):
+                raise ValueError('Shared artifact must be a regular file')
         with open(path, 'rb') as file:
             data = file.read(LIMIT + 1)
         if len(data) > LIMIT:

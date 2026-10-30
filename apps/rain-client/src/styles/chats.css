@@ -72,7 +72,7 @@
 
 .conversation-row.active {
   background-color: var(--bg-subtle);
-  border-left: 3px solid var(--accent-primary);
+  border-left: 1px solid var(--accent-primary);
 }
 
 .conv-avatar-box {
@@ -358,3 +358,31 @@
   color: var(--warning-text);
 }
 
+
+/* Coworker coordination stays adjacent to the shared conversation. */
+.coworker-controls { padding: 12px 20px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); }
+.coworker-mode { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.coworker-mode label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-primary); min-height: 36px; }
+.coworker-mode input { accent-color: var(--accent-primary); width: 16px; height: 16px; }
+.coworker-mode select { min-height: 36px; padding: 4px 8px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--bg-subtle); }
+.coworker-controls > p { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.coworker-human-request { margin-top: 12px; padding: 12px; background: var(--warning-surface); color: var(--warning-text); border: 1px solid var(--warning-border); border-radius: var(--radius-sm); font-size: 13px; overflow-wrap: anywhere; }
+.coworker-human-request p { margin: 6px 0; white-space: pre-wrap; }
+.coworker-message-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; font-size: 12px; color: var(--text-secondary); white-space: normal; }
+.coworker-control-error { margin: 0; padding: 10px 20px; color: var(--danger-text); background: var(--danger-surface); font-size: 13px; }
+@media (max-width: 600px) { .coworker-controls { padding: 8px 12px; } }
+
+.coworker-brief { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+.coworker-brief summary { cursor: pointer; padding: 4px 0; }
+.coworker-brief p { max-height: 120px; overflow-y: auto; overflow-wrap: anywhere; white-space: pre-wrap; margin: 6px 0; }
+
+.group-awareness { padding: 10px 20px; border-bottom: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+.group-awareness summary { cursor: pointer; padding: 4px 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.group-awareness p { margin: 6px 0; line-height: 1.5; }
+.group-awareness-list { max-height: 220px; overflow-y: auto; }
+.group-awareness-list > details { padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+.group-awareness ol { padding-left: 20px; margin: 8px 0; }
+.group-awareness li { padding-bottom: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.coworker-human-request summary { cursor: pointer; font-weight: 600; min-height: 28px; }
+.coworker-human-request > span { display: block; line-height: 1.5; }

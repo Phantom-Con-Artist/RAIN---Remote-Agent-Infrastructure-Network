@@ -1,5 +1,6 @@
 import {AttachmentPicker, downloadAttachment} from './AttachmentPicker';
 import { TerminalPanel } from './TerminalPanel';
+import { GroupAwareness } from './GroupAwareness';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   FiPlus,
@@ -28,6 +29,8 @@ interface ChatsViewProps {
   onSendMessage: (text: string, targetAgentId: string | null, attachments: ChatAttachment[]) => Promise<void>;
   onOpenNewGroup: () => void;
   onStopConversation: (id: string) => Promise<void>;
+  onResumeConversation: (id: string) => Promise<void>;
+  onCollaborationChange: (id: string, enabled: boolean, maxTurns: number) => Promise<void>;
   onDeleteConversation: (id: string) => Promise<void>;
   onApproveJob: (jobId: string, approved: boolean) => Promise<void>;
   onTriggerBatteryEvacuate: () => Promise<void>;
@@ -45,6 +48,8 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
   onStartDirect,
   onOpenNewGroup,
   onStopConversation,
+  onResumeConversation,
+  onCollaborationChange,
   onDeleteConversation,
   onApproveJob,
   onTriggerBatteryEvacuate,
@@ -53,6 +58,13 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
 }) => {
   const [pendingFiles,setPendingFiles]=useState<ChatAttachment[]>([]);
   const [attachmentError,setAttachmentError]=useState('');
+  const [controlError, setControlError] = useState('');
+  const [controlBusy, setControlBusy] = useState(false);
+  const runControl = async (action: () => Promise<void>) => {
+    setControlBusy(true); setControlError('');
+    try { await action(); } catch (error) { setControlError(error instanceof Error ? error.message : 'Could not update group. Try again.'); }
+    finally { setControlBusy(false); }
+  };
   const [search, setSearch] = useState('');
   const [contactError, setContactError] = useState('');
   const [terminalId, setTerminalId] = useState<string | null>(null);
@@ -66,8 +78,9 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
 
   const activeConv = conversations.find(c => c.id === activeConversationId) || null;
 
+  const directMember = !activeConv?.is_group ? sessions.find(s => activeConv?.participant_ids.includes(s.id)) : undefined;
   const interactiveMembers = sessions.filter(s => s.interactive && activeConv?.participant_ids.includes(s.id));
-  useEffect(() => {pinnedToBottom.current=true;setTerminalId(null); setTargetSessionId('all'); setInputText('');setPendingFiles([]);setAttachmentError('');}, [activeConv?.id]);
+  useEffect(() => {pinnedToBottom.current=true;setTerminalId(null); setTargetSessionId('all'); setInputText('');setPendingFiles([]);setAttachmentError('');setControlError('');}, [activeConv?.id]);
   const workingMembers = sessions.filter(s=>activeConv?.participant_ids.includes(s.id)&&['working','thinking','responding'].includes(s.state));
   const visibleMessages = messages.filter(m => m.sender_type === 'human' || !m.text.includes('\x1b'));
 
@@ -200,6 +213,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
 
               <div className="header-actions">
                 {interactiveMembers.length > 0 && <select aria-label="Open agent terminal" value={terminalId || ''} onChange={e => setTerminalId(e.target.value || null)}><option value="">Conversation</option>{interactiveMembers.map(s=><option key={s.id} value={s.id}>{s.name} terminal</option>)}</select>}
+                {!activeConv.is_active && <button className="icon-button" disabled={controlBusy} onClick={() => runControl(() => onResumeConversation(activeConv.id))}>Resume</button>}
                 {activeConv.is_active && (
                   <button
                     className="icon-button"
@@ -220,6 +234,29 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
               </div>
             </div>
 
+            {activeConv.is_group && <div className="coworker-controls">
+              <div className="coworker-mode">
+                <label><input type="checkbox" checked={activeConv.collaboration?.enabled ?? false} disabled={controlBusy}
+                  onChange={e => runControl(() => onCollaborationChange(activeConv.id, e.target.checked, activeConv.collaboration?.max_turns ?? 8))}/>
+                  Coworker discussion</label>
+                <label>Turn limit <select aria-label="Coworker turn limit" value={activeConv.collaboration?.max_turns ?? 8} disabled={controlBusy}
+                  onChange={e => runControl(() => onCollaborationChange(activeConv.id, activeConv.collaboration?.enabled ?? true, Number(e.target.value)))}>
+                  {[1, 4, 8, 16, 32].map(n => <option key={n} value={n}>{n}</option>)}
+                  {activeConv.collaboration && ![1, 4, 8, 16, 32].includes(activeConv.collaboration.max_turns) && <option value={activeConv.collaboration.max_turns}>{activeConv.collaboration.max_turns}</option>}
+                </select></label>
+              </div>
+              {activeConv.collaboration?.human_goal && <details className="coworker-brief"><summary>Shared goal</summary><p>{activeConv.collaboration.human_goal}</p></details>}
+              <p>{activeConv.collaboration?.enabled
+                ? `Agents can plan and share files · ${activeConv.collaboration.remaining_turns} turns left.`
+                : 'Messages go to the selected agents. Enable coworker discussion to allow agent handoffs.'}</p>
+              {activeConv.collaboration?.waiting_for_human && <div className="coworker-human-request" role="status">
+                <details><summary>Your input is needed</summary><p>{activeConv.collaboration.human_request}</p></details>
+                <span>Reply below to continue the discussion.</span>
+              </div>}
+            </div>}
+            {controlError && <p className="coworker-control-error" role="alert">{controlError}</p>}
+
+            {directMember?.provider.endsWith('_chat') && <GroupAwareness key={activeConv.id} agentId={directMember.id}/>}
             {/* Messages Feed */}
             {terminalId ? <div className="chat-terminal"><TerminalPanel key={terminalId} id={terminalId}/></div> : <div className="chat-messages-scroll" ref={containerRef} onScroll={e=>{const el=e.currentTarget;pinnedToBottom.current=el.scrollHeight-el.scrollTop-el.clientHeight<120}}>
               {interactiveMembers.length>0 && <div className="native-chat-notice">{interactiveMembers.map(s=>s.name).join(', ')} uses terminal mode. Open its terminal above, or start a chat adapter from Machines for message replies.</div>}
@@ -230,6 +267,10 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                   )}
 
                   <div className="message-bubble">
+                    {msg.coworker && <div className="coworker-message-meta">
+                      <strong>{({discuss: 'Discussion', plan: 'Plan', handoff: 'Handoff', human_input: 'Needs your input', complete: 'Outcome'})[msg.coworker.kind]}</strong>
+                      {msg.coworker.to.length > 0 && <span>To {msg.coworker.to.map(id => id === 'all' ? 'all coworkers' : sessions.find(s => s.id === id)?.name ?? id).join(', ')}</span>}
+                    </div>}
                     {msg.text}
                     {msg.attachments?.map(file=><button type="button" className="message-attachment" key={file.id} onClick={()=>downloadAttachment(file)} disabled={!file.data_base64}><FiPaperclip/><span><strong>{file.name}</strong><small>{(file.size_bytes/1024).toFixed(1)} KB · Download</small></span></button>)}
 
@@ -391,7 +432,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                 rows={1}
                 onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleSend();}}}
                 className="chat-input-field"
-                placeholder={activeConv.is_active ? 'Message, @session, or /command…' : 'Conversation is paused'}
+                placeholder={!activeConv.is_active ? 'Conversation is paused' : activeConv.collaboration?.waiting_for_human ? 'Give direction to your coworkers…' : 'Message, @session, or /command…'}
                 disabled={!activeConv.is_active || isSubmitting}
                 value={inputText}
                 onChange={e => setInputText(e.target.value)}

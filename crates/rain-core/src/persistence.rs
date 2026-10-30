@@ -10,6 +10,8 @@ struct Snapshot {
     messages: HashMap<uuid::Uuid, Vec<ChatMessage>>,
     jobs: HashMap<uuid::Uuid, JobDelegation>,
     agents: Vec<AgentProcess>,
+    #[serde(default)]
+    group_memories: HashMap<uuid::Uuid, rain_protocol::GroupMemory>,
 }
 impl ChatStore {
     pub async fn restore(supervisor: AgentSupervisor, path: &Path) -> Result<Self, String> {
@@ -24,6 +26,7 @@ impl ChatStore {
                 *store.conversations.write().await = snapshot.conversations;
                 *store.messages.write().await = snapshot.messages;
                 *store.jobs.write().await = snapshot.jobs;
+                *store.group_memories.write().await = snapshot.group_memories;
                 for mut agent in snapshot.agents {
                     if matches!(agent.status, AgentStatus::Running | AgentStatus::Starting) {
                         agent.status = AgentStatus::Terminated;
@@ -50,6 +53,7 @@ impl ChatStore {
             conversations: conversations.clone(),
             messages: messages.clone(),
             jobs: jobs.clone(),
+            group_memories: self.group_memories.read().await.clone(),
             agents: self.supervisor.list_agents().await,
         };
         let bytes = serde_json::to_vec(&snapshot).map_err(|e| e.to_string())?;

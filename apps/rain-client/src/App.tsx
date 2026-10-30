@@ -262,8 +262,23 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleResumeConversation = async (id: string) => {
+    await apiRequest(`/api/v1/conversations/${id}/resume`, { method: 'POST' });
+    await loadConversations();
+    await loadMessages(id);
+  };
+
+  const handleCollaboration = async (id: string, enabled: boolean, maxTurns: number) => {
+    await apiRequest(`/api/v1/conversations/${id}/collaboration`, {
+      method: 'PATCH', body: JSON.stringify({ enabled, max_turns: maxTurns }),
+    });
+    await loadConversations();
+    await loadMessages(id);
+  };
+
   const handleDeleteConversation = async (id: string) => {
-    if (!window.confirm('Delete this group and its shared workflow? Agent sessions will keep running.')) return;
+    const group = conversations.find(c => c.id === id)?.is_group;
+    if (!window.confirm(group ? 'Delete this group? Members will retain its shared history, but group discussion will end. Agent sessions keep running.' : 'Delete this direct conversation? Agent sessions keep running.')) return;
     try {
       await apiRequest(`/api/v1/conversations/${id}`, { method: 'DELETE' });
       showToast('Conversation deleted');
@@ -412,6 +427,8 @@ export const App: React.FC = () => {
             onStartDirect={handleOpenDirect}
             onOpenNewGroup={() => setShowNewGroupModal(true)}
             onStopConversation={handleStopConversation}
+            onResumeConversation={handleResumeConversation}
+            onCollaborationChange={handleCollaboration}
             onDeleteConversation={handleDeleteConversation}
             onApproveJob={handleApproveJob}
             onTriggerBatteryEvacuate={handleTriggerBatteryEvacuate}
