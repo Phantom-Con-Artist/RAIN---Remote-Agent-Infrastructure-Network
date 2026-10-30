@@ -1,32 +1,33 @@
 // Typed API Client and Formatters for RAIN Client
 
+export function normalizeHostUrl(input: string): string {
+  let url: URL;
+  try { url = new URL(input.trim()); } catch { throw new Error('Enter a complete hub address, such as https://hub.example.'); }
+  if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) throw new Error('Use an HTTPS hub address.');
+  if (url.username || url.password || url.search || url.hash || !['', '/'].includes(url.pathname)) throw new Error('Use only the hub address, without credentials, a path, or a query.');
+  if (url.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new Error('Remote hubs require HTTPS. HTTP is allowed only on this machine.');
+  return url.origin;
+}
+
 function getDefaultHostUrl(): string {
-  if (typeof window !== 'undefined' && window.location) {
-    const origin = window.location.origin;
-    if (origin && origin !== 'null' && !origin.startsWith('file:')) {
-      const saved = localStorage.getItem('rain_host_url');
-      if (saved && saved.trim() !== '') {
-        // If saved is localhost but current page is loaded from a network IP, prefer current origin
-        if (saved.includes('localhost') && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-          return origin;
-        }
-        return saved;
-      }
-      return origin;
-    }
-  }
-  return 'http://localhost:7890';
+  const origin = window.location.origin;
+  const webPage = /^https?:/.test(origin);
+  // A remotely served workspace always talks to its own authenticated gateway.
+  if (webPage && !['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) return origin;
+  const saved = localStorage.getItem('rain_host_url');
+  if (saved) { try { return normalizeHostUrl(saved); } catch { localStorage.removeItem('rain_host_url'); } }
+  return webPage ? origin : 'http://localhost:7890';
 }
 
 let hostUrl = getDefaultHostUrl();
-let authToken = localStorage.getItem('rain_auth_token') || '';
+// Never reuse a device token under a different hub identity.
+let authToken = localStorage.getItem('rain_auth_host') === hostUrl ? localStorage.getItem('rain_auth_token') || '' : '';
 
-export function getHostUrl(): string {
-  return hostUrl;
-}
-
-export function setHostUrl(url: string) {
-  hostUrl = url.replace(/\/+$/, '');
+export function getHostUrl(): string { return hostUrl; }
+export function setHostUrl(input: string) {
+  const next = normalizeHostUrl(input);
+  if (next !== hostUrl) setAuthToken('');
+  hostUrl = next;
   localStorage.setItem('rain_host_url', hostUrl);
 }
 
@@ -37,6 +38,7 @@ export function getAuthToken(): string {
 export function setAuthToken(token: string) {
   authToken = token;
   localStorage.setItem('rain_auth_token', token);
+  localStorage.setItem('rain_auth_host', hostUrl);
 }
 
 export interface ApiResult<T> {
@@ -52,12 +54,16 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
   const headers = new Headers(options.headers || {});
   headers.set('Content-Type', 'application/json');
   if (authToken) {
-    headers.set('Authorization', `Bearer ${authToken}`);
+    headers.set('X-Rain-Device-Token', authToken);
   }
 
   try {
     const res = await fetch(url, { ...options, headers, signal: options.signal || AbortSignal.timeout(25000) });
     const latencyMs = Math.round(performance.now() - start);
+    if (base !== hostUrl) throw new Error('Hub changed. Refresh before continuing.');
+    if (res.status === 401) throw new Error('Sign in to your private hub in the browser, then retry.');
+    if (res.status === 403) throw new Error('Access denied. Check your private connection and hub access settings.');
+    if (!res.headers.get('content-type')?.includes('application/json')) throw new Error('This address did not return a RAIN response. Open the hub address and check its sign-in page.');
     const json = await res.json();
     if (res.status === 404 && endpoint.startsWith('/api/v1/agents/')) throw new Error('The host does not support this action or the session was removed. Refresh the page; restart the daemon if it is running an older build.');
     if (!res.ok || !json.success) {
@@ -65,6 +71,8 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
     }
     return { data: json.data as T, latencyMs };
   } catch (err: any) {
+    if (err.name === 'TimeoutError') throw new Error('The hub took too long to respond. Check your connection and retry.');
+    if (err instanceof TypeError) throw new Error('Cannot reach your hub. Check that it is running and your private connection is active.');
     throw err;
   }
 }

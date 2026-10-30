@@ -171,3 +171,13 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 @media(max-width:600px){.chat-header-bar{gap:6px;flex-wrap:wrap}.header-actions{flex-wrap:wrap}.chat-input-bar{gap:6px}.chat-input-bar>select{max-width:75px}.chat-activity{padding:6px 12px}.composer-suggestions button{flex-direction:column;gap:4px}}
 .coworker-controls>summary{cursor:pointer;font-size:12px;font-weight:500;color:var(--text-secondary);padding:2px 0 8px}
 @media(max-width:600px){.coworker-controls>summary{padding:6px 0}.coworker-controls[open]{max-height:32vh;overflow:auto}}
+
+.hub-connection-notice { flex: none; max-height: 40dvh; overflow: auto; margin: 12px 20px; padding: 16px; background: var(--bg-subtle); overflow-wrap: anywhere; }
+.hub-connection-notice p { max-width: 72ch; margin: 8px 0 16px; line-height: 1.6; }
+.connections-screen #hub-address-help { font-size: 14px; margin-top: 10px; }
+.connections-screen #hub-address-error { color: var(--danger-text); overflow-wrap: anywhere; }
+.connections-screen input { font-size: 16px; }
+.connections-screen p:empty { display: none; }
+.connections-screen .icon-button.primary { background: var(--text-primary); color: var(--bg-surface); border-color: var(--text-primary); }
+
+.connections-screen .icon-button.primary:hover { background: var(--text-primary); opacity: .85; }

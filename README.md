@@ -9,7 +9,8 @@ The machines provide execution environments. Your installed CLIs provide the AI 
 ```sh
 ./install.sh
 rain initialize
-rain-client start
+rain-server start
+rain-client start --hub http://127.0.0.1:7890
 ```
 
 `rain-server start|stop|restart|status|logs` manages the daemon. `rain network --watch` and `rain flow --watch` monitor actual hierarchy and dataflow. See [CLI and hierarchical hubs](docs/network-and-cli.md).
@@ -105,3 +106,5 @@ The implementation uses Rust/Tokio, Hyper, React/TypeScript, Tauri, xterm.js, Py
 ## License
 
 Copyright 2026 Subhradeep Sarkar. Licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE).
+
+Private internet access uses a user-owned hub and remote-only clients. See [self-hosted WireGuard and HTTPS gateway](deploy/private-hub/README.md). `rain-client` never starts or stops a server. Remote client URLs require HTTPS.

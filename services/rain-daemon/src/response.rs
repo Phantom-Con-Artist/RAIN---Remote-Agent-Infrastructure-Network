@@ -38,7 +38,7 @@ pub(crate) fn json_response<T: serde::Serialize>(
         )
         .header(
             ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static("Content-Type, Authorization, Range, If-Range"),
+            HeaderValue::from_static("Content-Type, Authorization, X-Rain-Device-Token, Range, If-Range"),
         )
         .body(full_body(json_bytes))
         .unwrap();
@@ -58,7 +58,7 @@ pub(crate) fn cors_preflight(
         )
         .header(
             ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static("Content-Type, Authorization, Range, If-Range"),
+            HeaderValue::from_static("Content-Type, Authorization, X-Rain-Device-Token, Range, If-Range"),
         )
         .body(empty_body())
         .unwrap()

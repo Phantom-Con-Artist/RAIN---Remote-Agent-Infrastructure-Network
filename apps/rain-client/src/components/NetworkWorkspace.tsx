@@ -29,8 +29,8 @@ export function NetworkWorkspace({connections,onOpenConversation}:{connections:R
  const [snapshot,setSnapshot]=useState<NetworkSnapshot|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[live,setLive]=useState(true),[probing,setProbing]=useState(false);
  const [focus,setFocus]=useState(''),[selected,setSelected]=useState(''),[filter,setFilter]=useState(''),[failedOnly,setFailedOnly]=useState(false),[retrying,setRetrying]=useState('');
  const [inspected,setInspected]=useState<ChatAttachment|null>(null),[inspectBusy,setInspectBusy]=useState('');
- const generation=useRef(0),mounted=useRef(true);
- const refresh=useCallback(async()=>{const request=++generation.current;setBusy(true);try{const response=await apiRequest<NetworkSnapshot>('/api/v1/network/topology');if(mounted.current&&request===generation.current){setSnapshot(response.data);setError('');}}catch(e){if(mounted.current&&request===generation.current)setError(e instanceof Error?e.message:'Could not reach this hub');}finally{if(mounted.current&&request===generation.current)setBusy(false);}},[]);
+ const generation=useRef(0),mounted=useRef(true),inFlight=useRef(false);
+ const refresh=useCallback(async()=>{if(inFlight.current)return;inFlight.current=true;const request=++generation.current;setBusy(true);try{const response=await apiRequest<NetworkSnapshot>('/api/v1/network/topology');if(mounted.current&&request===generation.current){setSnapshot(response.data);setError('');}}catch(e){if(mounted.current&&request===generation.current)setError(e instanceof Error?e.message:'Could not reach this hub');}finally{inFlight.current=false;if(mounted.current&&request===generation.current)setBusy(false);}},[]);
  useEffect(()=>{mounted.current=true;refresh();return()=>{mounted.current=false;generation.current++;}},[refresh]);
  useEffect(()=>{if(!live)return;const timer=setInterval(refresh,3000);return()=>clearInterval(timer);},[live,refresh]);
  function switchView(next:View){setView(next);history.replaceState(null,'',`#network/${next}`);}

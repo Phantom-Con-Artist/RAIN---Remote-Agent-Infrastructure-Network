@@ -9,7 +9,7 @@ export function AttachmentPicker({disabled,onAttach}:{disabled:boolean;onAttach:
  const [hostPath,setHostPath]=useState(''),[machine,setMachine]=useState(''),[showHost,setShowHost]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[progress,setProgress]=useState('');
  async function upload(files:FileList){setError('');setBusy(true);try{for(const file of Array.from(files)){
   setProgress(`Uploading ${file.name}…`);
-  const attachment=await new Promise<ChatAttachment>((resolve,reject)=>{const xhr=new XMLHttpRequest();request.current=xhr;xhr.open('POST',`${getHostUrl()}/api/v1/artifacts/upload?name=${encodeURIComponent(file.name)}`);xhr.setRequestHeader('Content-Type','application/octet-stream');if(getAuthToken())xhr.setRequestHeader('Authorization',`Bearer ${getAuthToken()}`);
+  const attachment=await new Promise<ChatAttachment>((resolve,reject)=>{const xhr=new XMLHttpRequest();request.current=xhr;xhr.open('POST',`${getHostUrl()}/api/v1/artifacts/upload?name=${encodeURIComponent(file.name)}`);xhr.setRequestHeader('Content-Type','application/octet-stream');if(getAuthToken())xhr.setRequestHeader('X-Rain-Device-Token',getAuthToken());
    xhr.upload.onprogress=e=>{if(e.lengthComputable)setProgress(`${file.name} · ${Math.round(e.loaded/e.total*100)}%`)};
    xhr.onload=()=>{try{const response=JSON.parse(xhr.responseText);if(xhr.status>=400||!response.success)throw Error(response.error||'Upload failed');resolve(response.data)}catch(e){reject(e)}};
    xhr.onerror=()=>reject(Error('Upload interrupted. Choose the file again to retry.'));xhr.onabort=()=>reject(Error('Upload cancelled.'));xhr.send(file);

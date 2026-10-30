@@ -18,7 +18,7 @@ export function AttachmentCard({file,initiallyOpen=false}:{file:ChatAttachment;i
    if(file.data_base64){try{const bytes=Uint8Array.from(atob(file.data_base64),c=>c.charCodeAt(0));objectUrl=URL.createObjectURL(new Blob([bytes],{type:mime}));if(!cancelled)setUrl(objectUrl);}catch{if(!cancelled)setError('The saved file data is unavailable.');}}
    else {setUrl(content);apiRequest<{original_path:string;source_machine:string|null}>(`/api/v1/artifacts/${file.id}`).then(r=>{if(!cancelled)setSource(r.data)}).catch(()=>{});}
    if(readable||(!image&&!video&&!audio&&!pdf)){
-    try{const headers:Record<string,string>={Range:'bytes=0-262143'};if(getAuthToken())headers.Authorization=`Bearer ${getAuthToken()}`;
+    try{const headers:Record<string,string>={Range:'bytes=0-262143'};if(getAuthToken())headers['X-Rain-Device-Token']=getAuthToken();
      const response=await fetch(objectUrl||content,{headers,signal:controller.signal});if(!response.ok&&response.status!==416)throw Error('This file is unavailable on its source machine.');
      const bytes=new Uint8Array(await response.arrayBuffer());
      if(cancelled)return;

@@ -44,6 +44,19 @@ pub(crate) async fn handle_request(
     req: Request<Incoming>,
     state: AppState,
 ) -> Result<HttpResponse, hyper::Error> {
+    if !crate::access::allowed(
+        req.headers(),
+        req.method(),
+        std::env::var("RAIN_GATEWAY_TOKEN").ok().as_deref(),
+        &std::env::var("RAIN_ALLOWED_ORIGINS").unwrap_or_default(),
+    ) {
+        return Ok(crate::response::json_response(
+            StatusCode::FORBIDDEN,
+            &rain_protocol::ApiResponse::<()>::err(
+                "Access denied: use the configured private gateway",
+            ),
+        ));
+    }
     let path = req.uri().path().to_string();
     let mutating = (path.starts_with("/api/v1/conversations")
         || path.starts_with("/api/v1/agents/")
@@ -93,7 +106,11 @@ async fn dispatch(req: Request<Incoming>, state: AppState) -> Result<HttpRespons
     if (method == Method::GET || method == Method::HEAD) && path.starts_with("/assets/") {
         let asset_path =
             std::path::Path::new("apps/rain-client/dist").join(path.trim_start_matches('/'));
-        if asset_path.exists() {
+        if !path
+            .split('/')
+            .any(|segment| segment == ".." || segment == ".")
+            && asset_path.exists()
+        {
             let mime = if path.ends_with(".ttf") {
                 "font/ttf"
             } else if path.ends_with(".woff2") {

@@ -133,7 +133,8 @@ pub(super) async fn handle(
                 .headers()
                 .get("Authorization")
                 .and_then(|h| h.to_str().ok());
-            let token = auth_header.and_then(|h| h.strip_prefix("Bearer "));
+            let token = req.headers().get("x-rain-device-token").and_then(|h| h.to_str().ok())
+                .or_else(|| auth_header.and_then(|h| h.strip_prefix("Bearer ")));
             let host_name =
                 std::env::var("HOSTNAME").unwrap_or_else(|_| "RAIN-Primary-Hub".to_string());
 
@@ -148,9 +149,9 @@ pub(super) async fn handle(
                 }
             }
 
-            // Return default active session for seamless developer/USB testing
+            // A reachable hub is not an authenticated device session.
             let res = SessionStatusResponse {
-                authenticated: true,
+                authenticated: false,
                 device: None,
                 hub_name: host_name,
             };

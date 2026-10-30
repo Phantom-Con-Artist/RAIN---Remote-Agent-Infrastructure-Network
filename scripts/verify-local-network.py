@@ -103,9 +103,9 @@ try:
     parsed=json.loads(subprocess.check_output([str(work/'bin'/'rain'),'flow','--url',root,'--json'],cwd=ROOT,env=env('root'),text=True))
     assert 'files' in parsed and 'messages' in parsed
     check('terminal network and dataflow commands return actual JSON without banner contamination')
-    output=subprocess.check_output([str(work/'bin'/'rain-client'),'start','--no-open'],cwd=ROOT,env=env('root'),text=True)
+    output=subprocess.check_output([str(work/'bin'/'rain-client'),'start','--hub',root,'--no-open'],cwd=ROOT,env=env('root'),text=True)
     assert root in output
-    check('rain-client start reuses the managed server and prints its URL')
+    check('rain-client connects to the explicitly selected hub and prints its URL')
     # Large binary upload remains a disk-backed reference, supports byte ranges and exact download.
     data=bytes(range(251))*30000
     request=urllib.request.Request(root+'/api/v1/artifacts/upload?name=large-media.bin',data=data,headers={'content-type':'application/octet-stream'},method='POST')

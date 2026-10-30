@@ -1,3 +1,4 @@
+mod access;
 mod artifact_body;
 mod portal;
 mod response;
@@ -27,6 +28,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         env!("CARGO_PKG_VERSION")
     );
 
+    if let Ok(token) = std::env::var("RAIN_GATEWAY_TOKEN") {
+        if token.len() < 32 {
+            return Err("RAIN_GATEWAY_TOKEN must contain at least 32 bytes".into());
+        }
+    }
     let args: Vec<String> = std::env::args().collect();
     let is_spoke = args.iter().any(|a| a == "--spoke");
 

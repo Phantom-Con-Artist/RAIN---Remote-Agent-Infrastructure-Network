@@ -1,0 +1,14 @@
+# Run Caddy on the HUB, outside containers so loopback reaches rain-daemon.
+# WireGuard must already route the private address. Firewall WAN TCP 443 closed.
+# Owner supplies DNS, certificate trust, password hash and gateway secret.
+https://{$RAIN_PRIVATE_HOST} {
+    bind {$RAIN_VPN_ADDRESS}
+    tls internal
+    basic_auth {
+        {$RAIN_OWNER_USER} {$RAIN_OWNER_PASSWORD_HASH}
+    }
+    reverse_proxy 127.0.0.1:7890 {
+        # Overwrite rather than trust client-supplied gateway credentials.
+        header_up X-Rain-Gateway-Token {$RAIN_GATEWAY_TOKEN}
+    }
+}

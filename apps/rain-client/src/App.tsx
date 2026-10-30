@@ -51,7 +51,8 @@ export const App: React.FC = () => {
 
   // Connection & Telemetry
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'offline' | 'connecting'>('connecting');
-  const [latencyMs, setLatencyMs] = useState<number>(5);
+  const [latencyMs, setLatencyMs] = useState<number>(0);
+  const [connectionError, setConnectionError] = useState('');
   const [meshStatus, setMeshStatus] = useState<NetworkMeshStatus | null>(null);
 
   // Chats state
@@ -96,6 +97,7 @@ export const App: React.FC = () => {
       setConversations(res.data);
       setLatencyMs(res.latencyMs);
       setConnectionStatus('online');
+      setConnectionError('');
 
       setActiveConversationId(prev => {
         if (res.data.length === 0) return null;
@@ -104,8 +106,9 @@ export const App: React.FC = () => {
         }
         return prev;
       });
-    } catch {
+    } catch (error) {
       setConnectionStatus('offline');
+      setConnectionError(error instanceof Error ? error.message : 'Hub unavailable');
     }
   }, []);
 
@@ -415,6 +418,7 @@ export const App: React.FC = () => {
         onOpenPairing={handleOpenPairing}
       />
 
+        {connectionStatus==='offline'&&<aside className="hub-connection-notice" role="status"><strong>Hub unavailable</strong><p>{connectionError} Displayed information may be out of date. This client cannot confirm the server’s current activity.</p><button className="icon-button" onClick={()=>{setConnectionStatus('connecting');loadConversations();}}>Retry connection</button></aside>}
       {/* 2. Main Content Screens */}
       <main className={`app-main page-${currentTab}`} id="main-content" tabIndex={-1}>
         {currentTab==='home'&&<HomePage sessions={sessions} conversations={conversations} onNavigate={setCurrentTab} onOpenConversation={id=>{handleSelectConversation(id);setCurrentTab('chats')}} connectionStatus={connectionStatus}/>}
@@ -462,8 +466,8 @@ export const App: React.FC = () => {
             onRevokeDevice={handleRevokeDevice}
             onRefreshTopology={loadTopology}
             onHostUrlChanged={() => {
-              loadConversations();
-              loadTopology();
+              // Reload clears every hub-specific view, selection and pending request.
+              window.location.reload();
             }}
           />} />
         )}

@@ -11,6 +11,7 @@ import sys
 import time
 import urllib.request
 import webbrowser
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = Path(os.environ.get('RAIN_HOME', ROOT / '.rain')).expanduser().resolve()
@@ -68,6 +69,31 @@ def process_record():
 
 def url(config):
     return f"http://127.0.0.1:{config['port']}"
+
+
+def client_address(address=None):
+    address = address or settings().get('client_hub')
+    if not address:
+        raise RuntimeError('Choose your server: rain-client start --hub https://your-private-hub')
+    parsed = urlsplit(address)
+    if parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ('', '/'):
+        raise RuntimeError('Hub URL must be an origin without credentials, path, query or fragment')
+    if not parsed.hostname or parsed.scheme not in ('http', 'https'):
+        raise RuntimeError('Hub URL must use HTTPS (HTTP is allowed only on loopback)')
+    if parsed.scheme != 'https' and parsed.hostname not in ('localhost', '127.0.0.1', '::1'):
+        raise RuntimeError('Remote hubs require HTTPS through your private gateway')
+    return address.rstrip('/')
+
+
+def connect_client(address=None, no_open=False):
+    address = client_address(address)
+    config = settings()
+    config['client_hub'] = address
+    RUNTIME.mkdir(parents=True, exist_ok=True)
+    CONFIG.write_text(json.dumps(config, indent=2)+'\n')
+    print(f'RAIN remote client: {address}')
+    if not no_open:
+        webbrowser.open(address)
 
 
 def healthy(config):
@@ -212,6 +238,7 @@ def main():
         sub.add_parser(name).add_argument('--skip-build', action='store_true', help='Only initialize configuration')
     launch = sub.add_parser('start')
     launch.add_argument('--port', type=int)
+    launch.add_argument('--hub', help='Existing private hub URL (rain-client only)')
     launch.add_argument('--parent', help='Parent hub URL; this server runs as a subhub')
     launch.add_argument('--name', help='Name shown in the topology')
     launch.add_argument('--foreground', action='store_true')
@@ -234,6 +261,13 @@ def main():
         source=(ROOT/'crates/rain-core/src/branding.rs').read_text()
         banner=source.split('r#\"',1)[1].split('\"#;',1)[0]
         print(banner)
+    if role == 'rain-client':
+        if args.command != 'start':
+            raise RuntimeError('rain-client only connects to a hub. Use rain-server for server lifecycle commands.')
+        if args.port or args.parent or args.name or args.foreground:
+            raise RuntimeError('Server options belong to rain-server; clients only use --hub and --no-open')
+        connect_client(args.hub, args.no_open)
+        return
     if args.command in ('network','topology','hubs','flow','dataflow'):
         monitor('flow' if args.command in ('flow','dataflow') else 'network',args.url,args.watch,args.json)
     elif args.command in ('initialize', 'init'):
