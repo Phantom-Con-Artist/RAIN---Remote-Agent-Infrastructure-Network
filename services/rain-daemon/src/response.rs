@@ -1,29 +1,32 @@
 use bytes::Bytes;
-use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
+use http_body_util::{combinators::UnsyncBoxBody, BodyExt, Empty, Full};
 use hyper::header::{
     HeaderValue, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS,
     ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE,
 };
 use hyper::{Response, StatusCode};
 
-pub(crate) type HttpResponse = Response<BoxBody<Bytes, hyper::Error>>;
+pub(crate) type HttpResponse =
+    Response<UnsyncBoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>>;
 
-pub(crate) fn empty_body() -> BoxBody<Bytes, hyper::Error> {
+pub(crate) fn empty_body() -> UnsyncBoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>> {
     Empty::<Bytes>::new()
         .map_err(|never| match never {})
-        .boxed()
+        .boxed_unsync()
 }
 
-pub(crate) fn full_body<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
+pub(crate) fn full_body<T: Into<Bytes>>(
+    chunk: T,
+) -> UnsyncBoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>> {
     Full::new(chunk.into())
         .map_err(|never| match never {})
-        .boxed()
+        .boxed_unsync()
 }
 
 pub(crate) fn json_response<T: serde::Serialize>(
     status: StatusCode,
     val: &T,
-) -> Response<BoxBody<Bytes, hyper::Error>> {
+) -> Response<UnsyncBoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>> {
     let json_bytes = serde_json::to_vec(val).unwrap_or_default();
     let mut res = Response::builder()
         .status(status)
@@ -35,7 +38,7 @@ pub(crate) fn json_response<T: serde::Serialize>(
         )
         .header(
             ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static("Content-Type, Authorization"),
+            HeaderValue::from_static("Content-Type, Authorization, Range, If-Range"),
         )
         .body(full_body(json_bytes))
         .unwrap();
@@ -44,7 +47,8 @@ pub(crate) fn json_response<T: serde::Serialize>(
     res
 }
 
-pub(crate) fn cors_preflight() -> Response<BoxBody<Bytes, hyper::Error>> {
+pub(crate) fn cors_preflight(
+) -> Response<UnsyncBoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>> {
     Response::builder()
         .status(StatusCode::NO_CONTENT)
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"))
@@ -54,7 +58,7 @@ pub(crate) fn cors_preflight() -> Response<BoxBody<Bytes, hyper::Error>> {
         )
         .header(
             ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static("Content-Type, Authorization"),
+            HeaderValue::from_static("Content-Type, Authorization, Range, If-Range"),
         )
         .body(empty_body())
         .unwrap()
@@ -63,7 +67,7 @@ pub(crate) fn cors_preflight() -> Response<BoxBody<Bytes, hyper::Error>> {
 pub(crate) fn html_response(
     status: StatusCode,
     html: String,
-) -> Response<BoxBody<Bytes, hyper::Error>> {
+) -> Response<UnsyncBoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>> {
     Response::builder()
         .status(status)
         .header(
@@ -79,7 +83,7 @@ pub(crate) fn static_response(
     status: StatusCode,
     mime: &'static str,
     bytes: Vec<u8>,
-) -> Response<BoxBody<Bytes, hyper::Error>> {
+) -> Response<UnsyncBoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>> {
     Response::builder()
         .status(status)
         .header(CONTENT_TYPE, HeaderValue::from_static(mime))

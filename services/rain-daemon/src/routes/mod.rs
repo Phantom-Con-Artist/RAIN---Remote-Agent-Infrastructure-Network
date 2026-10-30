@@ -1,7 +1,9 @@
+mod artifacts;
 mod auth;
 mod chat;
 mod hub;
 mod jobs;
+mod network;
 mod power;
 mod remote;
 mod system;
@@ -42,10 +44,23 @@ pub(crate) async fn handle_request(
     req: Request<Incoming>,
     state: AppState,
 ) -> Result<HttpResponse, hyper::Error> {
-    let mutating = req.method() != Method::GET
+    let path = req.uri().path().to_string();
+    let mutating = (path.starts_with("/api/v1/conversations")
+        || path.starts_with("/api/v1/agents/")
+        || path.starts_with("/api/v1/jobs"))
+        && req.method() != Method::GET
         && req.method() != Method::HEAD
         && req.method() != Method::OPTIONS;
+    let network_mutation = path.starts_with("/api/v1/hub/") && req.method() != Method::GET;
     let response = dispatch(req, state.clone()).await?;
+    if network_mutation {
+        if let Err(e) = state.store.persist_network().await {
+            return Ok(crate::response::json_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &rain_protocol::ApiResponse::<()>::err(e),
+            ));
+        }
+    }
     if mutating {
         if let Err(e) = state.chat.persist(&state.history_path).await {
             return Ok(crate::response::json_response(
@@ -79,7 +94,13 @@ async fn dispatch(req: Request<Incoming>, state: AppState) -> Result<HttpRespons
         let asset_path =
             std::path::Path::new("apps/rain-client/dist").join(path.trim_start_matches('/'));
         if asset_path.exists() {
-            let mime = if path.ends_with(".js") {
+            let mime = if path.ends_with(".ttf") {
+                "font/ttf"
+            } else if path.ends_with(".woff2") {
+                "font/woff2"
+            } else if path.ends_with(".png") {
+                "image/png"
+            } else if path.ends_with(".js") {
                 "application/javascript"
             } else if path.ends_with(".css") {
                 "text/css"
@@ -96,7 +117,11 @@ async fn dispatch(req: Request<Incoming>, state: AppState) -> Result<HttpRespons
         }
     }
 
-    if path.starts_with("/api/v1/conversations")
+    if path.starts_with("/api/v1/network/") && path != "/api/v1/network/status" {
+        network::handle(req, &state).await
+    } else if path.starts_with("/api/v1/artifacts/") && path != "/api/v1/artifacts/from-file" {
+        artifacts::handle(req, &state).await
+    } else if path.starts_with("/api/v1/conversations")
         || path == "/api/v1/sessions"
         || path.starts_with("/api/v1/sessions/")
     {

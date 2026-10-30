@@ -151,7 +151,7 @@ export interface FileEntry {
 }
 
 export interface NetworkMeshStatus {
-  current_transport: 'direct_usb' | 'lan_mdns' | 'wireguard_p2p' | 'encrypted_relay';
+  current_transport: 'loopback' | 'ssh' | 'direct_usb' | 'lan_mdns' | 'wireguard_p2p' | 'encrypted_relay';
   node_id: string;
   latency_ms: number;
   bytes_sent: number;
@@ -160,11 +160,12 @@ export interface NetworkMeshStatus {
   available_transports: string[];
 }
 
-export type TabType = 'chats' | 'machines' | 'files' | 'mesh';
+export type TabType = 'home' | 'guide' | 'chats' | 'machines' | 'files' | 'mesh';
 export type ThemeMode = 'dark' | 'light';
 
 
 export interface CoworkerEnvelope {
+  flair?: string;
   rain_coworker: number;
   run_id: string;
   kind: 'discuss' | 'plan' | 'handoff' | 'human_input' | 'complete';
@@ -174,6 +175,8 @@ export interface CoworkerEnvelope {
 }
 
 export interface CollaborationState {
+  mode?: "casual"|"goal"|"evidence";
+  addressed_ids?: string[];
   enabled: boolean;
   max_turns: number;
   remaining_turns: number;
@@ -188,4 +191,24 @@ export interface GroupMemory {
   conversation: Conversation;
   messages: ChatMessage[];
   deleted_at: string | null;
+}
+
+export interface NetworkNode {
+  revoked?:boolean;id:string;name:string;role:string;parent_id:string|null;endpoint:string|null;online:boolean;last_seen:string;
+  cpu_cores:number;ram_total_bytes:number;ram_available_bytes:number;active_agents:number;children:NetworkNode[];
+}
+export interface TransferReceipt {
+  id:string;artifact_id:string;source_machine:string|null;target_machine:string|null;route:string;status:string;
+  bytes:number;transferred_bytes:number;sha256:string;path:string|null;fallback_reason:string|null;error:string|null;
+  started_at:string;finished_at:string|null;
+}
+export interface NetworkSnapshot {
+  parent_link?:{url:string|null;last_seen:string|null;online:boolean};model:string;control_plane:string;data_plane:string;root:NetworkNode;parent_path:string[];
+  execution_hosts:{alias:string;status:string;checked_at?:string;resources?:{hostname:string;cpu_cores:number;ram_total_bytes?:number;ram_available_bytes?:number};error?:string}[];
+  message_flows?:ChatDispatch[];transfers:TransferReceipt[];heartbeat_timeout_seconds:number;
+}
+
+export interface ChatDispatch {
+ id:string;conversation_id:string;message_id:string;run_id:string|null;source_id:string;source_name:string;target_id:string;target_name:string;target_machine:string|null;
+ status:string;queued_at:string;started_at:string|null;finished_at:string|null;error:string|null;
 }

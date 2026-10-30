@@ -10,7 +10,13 @@ use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct ChatStore {
-    pub(crate) collaboration_lock: Arc<tokio::sync::Mutex<()>>,
+    pub(crate) human_tickets: Arc<tokio::sync::Mutex<HashMap<uuid::Uuid, uuid::Uuid>>>,
+    pub(crate) traces: Arc<RwLock<Vec<rain_protocol::AgentTrace>>>,
+    pub(crate) dispatches: Arc<RwLock<Vec<rain_protocol::ChatDispatch>>>,
+    pub(crate) native_catalogs: Arc<RwLock<HashMap<String, serde_json::Value>>>,
+    pub artifacts: crate::artifacts::ArtifactStore,
+    pub(crate) collaboration_locks:
+        Arc<tokio::sync::Mutex<HashMap<uuid::Uuid, Arc<tokio::sync::Mutex<()>>>>>,
     pub(crate) supervisor: crate::AgentSupervisor,
     pub(crate) conversations: Arc<RwLock<HashMap<uuid::Uuid, Conversation>>>,
     pub(crate) messages: Arc<RwLock<HashMap<uuid::Uuid, Vec<ChatMessage>>>>,
@@ -27,7 +33,12 @@ impl ChatStore {
     pub fn with_supervisor(supervisor: crate::AgentSupervisor) -> Self {
         Self {
             supervisor,
-            collaboration_lock: Arc::new(tokio::sync::Mutex::new(())),
+            native_catalogs: Arc::new(RwLock::new(HashMap::new())),
+            traces: Arc::new(RwLock::new(Vec::new())),
+            dispatches: Arc::new(RwLock::new(Vec::new())),
+            human_tickets: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            artifacts: crate::artifacts::ArtifactStore::new(),
+            collaboration_locks: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             persistence_lock: Arc::new(tokio::sync::Mutex::new(())),
             conversations: Arc::new(RwLock::new(HashMap::new())),
             messages: Arc::new(RwLock::new(HashMap::new())),
@@ -159,6 +170,8 @@ impl ChatStore {
         }
 
         let conv = Conversation {
+            native_settings: Default::default(),
+            native_terminal_id: None,
             id: new_id,
             title: title.clone(),
             is_group,
@@ -182,7 +195,7 @@ impl ChatStore {
             sender_type: SenderType::System,
             text: if is_group {
                 format!(
-                    "Coworker group '{}' is ready. Share a goal to start planning together.",
+                    "Coworker group '{}' is ready. Post a message to chat or collaborate together.",
                     title
                 )
             } else {
@@ -209,7 +222,8 @@ impl ChatStore {
     }
 
     pub async fn delete_conversation(&self, conv_id: uuid::Uuid) -> Result<(), String> {
-        let _serial = self.collaboration_lock.lock().await;
+        let gate = self.conversation_gate(conv_id).await;
+        let _serial = gate.lock().await;
         let mut conv_lock = self.conversations.write().await;
         let mut conversation = conv_lock.remove(&conv_id).ok_or("Conversation not found")?;
 
@@ -247,37 +261,29 @@ impl ChatStore {
     }
 
     pub async fn stop_conversation(&self, conv_id: uuid::Uuid) -> Result<Conversation, String> {
-        let _serial = self.collaboration_lock.lock().await;
-        let mut conv_lock = self.conversations.write().await;
-        if let Some(c) = conv_lock.get_mut(&conv_id) {
+        self.invalidate_human_deliveries(conv_id).await;
+        let gate = self.conversation_gate(conv_id).await;
+        let _serial = gate.lock().await;
+        let conversation = {
+            let mut conversations = self.conversations.write().await;
+            let c = conversations
+                .get_mut(&conv_id)
+                .ok_or("Conversation not found")?;
             c.is_active = false;
             if let Some(state) = c.collaboration.as_mut() {
                 state.run_id = None;
             }
-            c.last_message = Some("Group stopped by admin".to_string());
+            c.last_message = Some("Channel paused by you".into());
             c.last_message_time = Some(chrono::Utc::now());
-
-            let mut msg_lock = self.messages.write().await;
-            let list = msg_lock.entry(conv_id).or_default();
-            list.push(ChatMessage {
-                id: uuid::Uuid::new_v4(),
-                conversation_id: conv_id,
-                sender_id: "system".to_string(),
-                sender_name: "RAIN System".to_string(),
-                sender_type: SenderType::System,
-                text: "Group messaging paused. Agent sessions continue running independently."
-                    .to_string(),
-                status: MessageDeliveryStatus::Read,
-                attachments: vec![],
-                job_delegation: None,
-                coworker: None,
-                timestamp: chrono::Utc::now(),
-            });
-
-            Ok(c.clone())
-        } else {
-            Err("Conversation not found".to_string())
+            self.messages.write().await.entry(conv_id).or_default().push(ChatMessage{id:uuid::Uuid::new_v4(),conversation_id:conv_id,sender_id:"system".into(),sender_name:"RAIN".into(),sender_type:SenderType::System,text:"Channel paused. Pending channel turns were cancelled; agent sessions remain available for direct chat.".into(),status:MessageDeliveryStatus::Delivered,attachments:vec![],job_delegation:None,coworker:None,timestamp:chrono::Utc::now()});
+            c.clone()
+        };
+        for member in &conversation.participant_ids {
+            if let Ok(id) = uuid::Uuid::parse_str(member) {
+                let _ = self.supervisor.cancel_chat_conversation(id, conv_id).await;
+            }
         }
+        Ok(conversation)
     }
 
     pub async fn get_or_create_direct_chat(&self, agent_id: &str) -> Conversation {
@@ -324,20 +330,13 @@ impl ChatStore {
         target_session: Option<String>,
         attachments: Option<Vec<ChatAttachment>>,
     ) -> Result<ChatMessage, String> {
-        let _serial = self.collaboration_lock.lock().await;
-        let atts = attachments.unwrap_or_default();
-        let is_active = {
-            let conv_lock = self.conversations.read().await;
-            conv_lock
-                .get(&conv_id)
-                .map(|c| c.is_active)
-                .unwrap_or(false)
-        };
-
-        if !is_active {
-            return Err("Cannot send messages to a stopped conversation".to_string());
+        if let Some(result) = self.channel_command(conv_id, &text).await {
+            return result;
         }
-
+        if let Some(result) = self.direct_command(conv_id, &text).await {
+            return result;
+        }
+        let ticket = self.invalidate_human_deliveries(conv_id).await;
         let conversation = self
             .conversations
             .read()
@@ -345,164 +344,348 @@ impl ChatStore {
             .get(&conv_id)
             .cloned()
             .ok_or("Conversation missing")?;
-        let mut recipients: Vec<String> = conversation
+        if !conversation.is_active {
+            return Err("Conversation is paused; use /resume to continue".into());
+        }
+        let mut selected: Vec<_> = conversation
             .participant_ids
-            .into_iter()
-            .filter(|id| id != "human-user")
+            .iter()
+            .filter(|id| id.as_str() != "human-user")
+            .cloned()
             .collect();
-        if let Some(target) = target_session {
-            if !recipients.contains(&target) {
+        if let Some(target) = &target_session {
+            if !selected.contains(target) {
                 return Err("Target is not a conversation member".into());
             }
-            recipients.retain(|id| id == &target);
+            selected.retain(|id| id == target);
         }
-        let mut input = text.as_str();
-        if let Some(rest) = input.strip_prefix('@') {
-            if let Some((mention, body)) = rest.split_once(' ') {
-                if mention != "all" {
-                    let agents = self.supervisor.list_agents().await;
-                    let selected: Vec<_> = agents
-                        .iter()
-                        .filter(|a| {
-                            (a.name.eq_ignore_ascii_case(mention) || a.id.to_string() == mention)
-                                && recipients.contains(&a.id.to_string())
-                        })
-                        .collect();
-                    if selected.len() != 1 {
-                        return Err("Mention must uniquely identify a group member".into());
-                    }
-                    recipients.retain(|id| id == &selected[0].id.to_string());
+        let directed = self.mentioned_peers(conv_id, &text, None).await?;
+        if let Some(mentioned) = &directed {
+            selected.retain(|id| mentioned.contains(id));
+        }
+        let mut recipients = Vec::new();
+        for member in &selected {
+            let id = uuid::Uuid::parse_str(member).map_err(|_| "Invalid session ID")?;
+            if let Some(agent) = self.supervisor.get_agent(id).await {
+                if agent.status == rain_protocol::AgentStatus::Running {
+                    recipients.push(agent);
+                    continue;
                 }
-                input = body;
+            }
+            if target_session.is_some() || directed.is_some() {
+                return Err("The mentioned agent is not running".into());
             }
         }
         if recipients.is_empty() {
-            return Err("Add an active agent to this conversation first".into());
+            return Err("No running agents in this conversation".into());
         }
-        for recipient in &recipients {
-            let id = uuid::Uuid::parse_str(recipient).map_err(|_| "Invalid session ID")?;
-            if self
-                .supervisor
-                .get_agent(id)
-                .await
-                .map(|a| a.status != rain_protocol::AgentStatus::Running)
-                .unwrap_or(true)
-            {
-                return Err("A selected session is no longer running".into());
-            }
+        let mut files = Vec::new();
+        for file in attachments.unwrap_or_default() {
+            files.push(self.artifacts.ingest(&file).await?);
         }
-        if atts.len() > 4 { return Err("A message can contain up to four files".into()); }
-        let mut delivered_files: HashMap<String, Vec<String>> = HashMap::new();
-        // Stage and verify every recipient's copy before any agent starts work.
-        for recipient in &recipients {
-            let id = uuid::Uuid::parse_str(recipient).map_err(|_| "Invalid session ID")?;
-            let agent = self.supervisor.get_agent(id).await.ok_or("Session not found")?;
-            for attachment in &atts {
-                let data = attachment.data_base64.as_ref().ok_or("Attachment has no transferable file contents")?;
-                let receipt = crate::host_access::operate(agent.machine.as_deref(), serde_json::json!({"action":"import","name":attachment.name,"size_bytes":attachment.size_bytes,"sha256":attachment.sha256,"content_base64":data})).await?;
-                let path = receipt["path"].as_str().ok_or("Host did not return an attachment path")?;
-                let hash = receipt["sha256"].as_str().ok_or("Host did not verify attachment")?;
-                delivered_files.entry(recipient.clone()).or_default().push(format!("RAIN_FILE: {}\nFilename: {}\nSHA256: {}", path, attachment.name, hash));
-            }
-        }
-        let msg_id = uuid::Uuid::new_v4();
-        let human_msg = ChatMessage {
-            id: msg_id,
+        let gate = self.conversation_gate(conv_id).await;
+        let run_id;
+        let message = ChatMessage {
+            id: uuid::Uuid::new_v4(),
             conversation_id: conv_id,
-            sender_id: "human-user".to_string(),
-            sender_name: "You".to_string(),
+            sender_id: "human-user".into(),
+            sender_name: "You".into(),
             sender_type: SenderType::Human,
             text: text.clone(),
             status: MessageDeliveryStatus::Sent,
-            attachments: atts.clone(),
+            attachments: files.clone(),
             job_delegation: None,
             coworker: None,
             timestamp: chrono::Utc::now(),
         };
-
         {
-            let mut lock = self.messages.write().await;
-            let list = lock.entry(conv_id).or_default();
-            list.push(human_msg.clone());
-        }
-
-        {
-            let mut conv_lock = self.conversations.write().await;
-            if let Some(c) = conv_lock.get_mut(&conv_id) {
-                let preview = if !atts.is_empty() {
-                    format!("You: [Attachment] {}", text)
-                } else {
-                    format!("You: {}", text)
-                };
-                c.last_message = Some(preview);
-                c.last_message_time = Some(chrono::Utc::now());
+            let _serial = gate.lock().await;
+            if self.human_tickets.lock().await.get(&conv_id) != Some(&ticket) {
+                return Err(
+                    "A newer human message superseded this pending file preparation".into(),
+                );
             }
-        }
-
-        if let Some(c) = self.conversations.write().await.get_mut(&conv_id) {
+            let mut conversations = self.conversations.write().await;
+            let c = conversations
+                .get_mut(&conv_id)
+                .ok_or("Conversation missing")?;
+            if !c.is_active {
+                return Err("Conversation is paused".into());
+            }
+            if c.is_group && c.collaboration.is_none() {
+                c.collaboration = Some(Default::default());
+            }
             if let Some(state) = c.collaboration.as_mut() {
-                state.human_goal.get_or_insert_with(|| input.chars().take(16000).collect());
-                state.human_direction = Some(input.chars().take(16000).collect());
+                state.addressed_ids = if target_session.is_some() || directed.is_some() {
+                    selected.clone()
+                } else {
+                    vec![]
+                };
+                state.interrupted_ids.clear();
+                state
+                    .human_goal
+                    .get_or_insert_with(|| text.chars().take(16000).collect());
+                state.human_direction = Some(text.chars().take(16000).collect());
                 state.run_id = Some(uuid::Uuid::new_v4());
                 state.remaining_turns = state.max_turns;
                 state.waiting_for_human = false;
                 state.human_request = None;
             }
-        }
-        for recipient in recipients {
-            let id = uuid::Uuid::parse_str(&recipient).map_err(|_| "Invalid session ID")?;
-            let provider = self
-                .supervisor
-                .get_agent(id)
+            run_id = c.collaboration.as_ref().and_then(|s| s.run_id);
+            c.last_message = Some(format!("You: {}", text));
+            c.last_message_time = Some(message.timestamp);
+            self.messages
+                .write()
                 .await
-                .map(|a| a.provider)
-                .unwrap_or_default();
-            let task = if conversation.is_group && provider.ends_with("_chat") {
-                self.coworker_prompt(conv_id, id, input).await
-            } else if provider.ends_with("_chat") {
-                self.direct_prompt(id, input).await
+                .entry(conv_id)
+                .or_default()
+                .push(message.clone());
+            drop(conversations);
+            // Queue interruption is ordered with human revisions, before any large transfer.
+            if conversation.is_group {
+                for member in &conversation.participant_ids {
+                    if let Ok(id) = uuid::Uuid::parse_str(member) {
+                        let _ = self.supervisor.interrupt_autonomy(id, conv_id).await;
+                    }
+                }
+            }
+        }
+        let mut staging = tokio::task::JoinSet::new();
+        for agent in recipients {
+            let store = self.artifacts.clone();
+            let files = files.clone();
+            staging.spawn(async move {
+                let mut paths = Vec::new();
+                for file in files {
+                    let receipt = store
+                        .deliver(
+                            uuid::Uuid::parse_str(&file.id)
+                                .map_err(|_| "Invalid shared file ID")?,
+                            agent.machine.as_deref(),
+                        )
+                        .await?;
+                    paths.push(format!(
+                        "RAIN_FILE: {}\nFilename: {}\nSHA256: {}",
+                        receipt.path.ok_or("Missing file path")?,
+                        file.name,
+                        receipt.sha256
+                    ));
+                }
+                Ok::<_, String>((agent, paths))
+            });
+        }
+        let mut deliveries = Vec::new();
+        while let Some(result) = staging.join_next().await {
+            match result.map_err(|e| e.to_string()).and_then(|r| r) {
+                Ok(done) => deliveries.push(done),
+                Err(e) => {
+                    self.mark_message(conv_id, message.id, MessageDeliveryStatus::Failed)
+                        .await;
+                    return Err(e);
+                }
+            }
+        }
+        let _serial = gate.lock().await;
+        let fresh = self
+            .conversations
+            .read()
+            .await
+            .get(&conv_id)
+            .cloned()
+            .ok_or("Conversation closed")?;
+        if !fresh.is_active
+            || fresh.collaboration.as_ref().and_then(|s| s.run_id) != run_id
+            || self.human_tickets.lock().await.get(&conv_id) != Some(&ticket)
+        {
+            self.mark_message(conv_id, message.id, MessageDeliveryStatus::Failed)
+                .await;
+            return Err("Newer human direction or pause superseded this delivery".into());
+        }
+        let mut input = text.as_str();
+        if input.starts_with("@{") {
+            if let Some((_, body)) = input.split_once('}') {
+                input = body.trim_start();
+            }
+        } else if input.starts_with('@') || input.starts_with("<@") {
+            if let Some((_, body)) = input.split_once(' ') {
+                input = body;
+            }
+        }
+        for (agent, paths) in deliveries {
+            let prompt = if conversation.is_group && agent.provider.ends_with("_chat") {
+                self.coworker_prompt(conv_id, agent.id, input).await
+            } else if agent.provider.ends_with("_chat") {
+                self.direct_prompt(agent.id, input).await
             } else {
-                input.to_string()
+                input.into()
             };
-            let task = match delivered_files.get(&recipient) {
-                Some(files) => format!("{}\n\nShared files copied to your machine (read these local paths):\n{}", task, files.join("\n\n")),
-                None => task,
+            let prompt = if paths.is_empty() {
+                prompt
+            } else {
+                format!(
+                    "{}\n\nFiles copied to YOUR machine:\n{}",
+                    prompt,
+                    paths.join("\n\n")
+                )
             };
-            if let Err(error) = self.supervisor.send_chat_input(id, &task, conv_id).await {
-                if let Some(message) = self.messages.write().await.get_mut(&conv_id)
-                    .and_then(|messages| messages.iter_mut().find(|m| m.id == msg_id)) {
-                    message.status = MessageDeliveryStatus::Failed;
-                }
-                if let Some(state) = self.conversations.write().await.get_mut(&conv_id).and_then(|c| c.collaboration.as_mut()) {
-                    state.run_id = None;
-                    state.waiting_for_human = true;
-                    state.human_request = Some("Message delivery failed. Some agents may have received it; review before retrying.".into());
-                }
-                return Err(error);
+            if let Err(e) = self
+                .dispatch_message(
+                    conv_id,
+                    message.id,
+                    "human-user",
+                    "You",
+                    &agent,
+                    run_id,
+                    &prompt,
+                    true,
+                )
+                .await
+            {
+                self.mark_message(conv_id, message.id, MessageDeliveryStatus::Failed)
+                    .await;
+                return Err(e);
             }
         }
-        let mut human_msg = human_msg;
-        human_msg.status = MessageDeliveryStatus::Delivered;
-        if let Some(messages) = self.messages.write().await.get_mut(&conv_id) {
-            if let Some(message) = messages.iter_mut().find(|m| m.id == human_msg.id) {
-                message.status = MessageDeliveryStatus::Delivered;
-            }
+        self.mark_message(conv_id, message.id, MessageDeliveryStatus::Delivered)
+            .await;
+        Ok(ChatMessage {
+            status: MessageDeliveryStatus::Delivered,
+            ..message
+        })
+    }
+
+    async fn mark_message(
+        &self,
+        id: uuid::Uuid,
+        message_id: uuid::Uuid,
+        status: MessageDeliveryStatus,
+    ) {
+        if let Some(message) = self
+            .messages
+            .write()
+            .await
+            .get_mut(&id)
+            .and_then(|messages| messages.iter_mut().find(|m| m.id == message_id))
+        {
+            message.status = status;
         }
-        Ok(human_msg)
     }
 
     pub async fn record_event(&self, event: rain_protocol::AgentEvent) {
-        if let rain_protocol::AgentEvent::ChatReply { agent_id, conversation_id, text } = &event {
-            if self.record_coworker_reply(*agent_id, *conversation_id, text).await { return; }
+        if let rain_protocol::AgentEvent::Trace {
+            agent_id,
+            dispatch_id,
+            step,
+        } = &event
+        {
+            if let Some(d) = self
+                .dispatches
+                .read()
+                .await
+                .iter()
+                .find(|d| d.id == *dispatch_id && d.target_id == agent_id.to_string())
+            {
+                let mut traces = self.traces.write().await;
+                traces.push(rain_protocol::AgentTrace {
+                    id: uuid::Uuid::new_v4(),
+                    dispatch_id: *dispatch_id,
+                    conversation_id: d.conversation_id,
+                    agent_id: *agent_id,
+                    step: step.chars().take(500).collect(),
+                    timestamp: chrono::Utc::now(),
+                });
+                if traces.len() > 5000 {
+                    let excess = traces.len() - 5000;
+                    traces.drain(..excess);
+                }
+            }
+            return;
+        }
+        if let rain_protocol::AgentEvent::TurnActivity {
+            agent_id,
+            dispatch_id,
+            state,
+            error,
+        } = &event
+        {
+            if let Some(dispatch) = self
+                .dispatches
+                .write()
+                .await
+                .iter_mut()
+                .find(|d| d.id == *dispatch_id && d.target_id == agent_id.to_string())
+            {
+                dispatch.status = state.clone();
+                if state == "running" {
+                    dispatch.started_at = Some(chrono::Utc::now());
+                } else {
+                    dispatch.finished_at = Some(chrono::Utc::now());
+                    dispatch.error = error.clone();
+                }
+            }
+            return;
+        }
+        let event = match event {
+            rain_protocol::AgentEvent::ChatReplyScoped {
+                agent_id,
+                conversation_id,
+                run_id,
+                text,
+            } => {
+                let c = self
+                    .conversations
+                    .read()
+                    .await
+                    .get(&conversation_id)
+                    .cloned();
+                if c.as_ref().map(|c| c.is_group).unwrap_or(false)
+                    && c.as_ref()
+                        .and_then(|c| c.collaboration.as_ref())
+                        .and_then(|s| s.run_id)
+                        != run_id
+                {
+                    self.publish_passive_reply(agent_id, conversation_id, &text)
+                        .await;
+                    return;
+                }
+                rain_protocol::AgentEvent::ChatReply {
+                    agent_id,
+                    conversation_id,
+                    text,
+                }
+            }
+            other => other,
+        };
+        if let rain_protocol::AgentEvent::ChatReply {
+            agent_id,
+            conversation_id,
+            text,
+        } = &event
+        {
+            if self
+                .record_direct_files(*conversation_id, *agent_id, text)
+                .await
+            {
+                return;
+            }
+            if self
+                .record_coworker_reply(*agent_id, *conversation_id, text)
+                .await
+            {
+                return;
+            }
         }
         // PTY redraws are terminal state, not conversation messages.
         if matches!(&event, rain_protocol::AgentEvent::Output { stream, .. } if stream == "terminal")
         {
             return;
         }
-        let system_event = matches!(&event, rain_protocol::AgentEvent::StatusChanged {..});
+        let system_event = matches!(&event, rain_protocol::AgentEvent::StatusChanged { .. });
         let (id, text, target) = match event {
-            rain_protocol::AgentEvent::ActivityChanged { .. } => return,
+            rain_protocol::AgentEvent::Trace { .. }
+            | rain_protocol::AgentEvent::ActivityChanged { .. }
+            | rain_protocol::AgentEvent::ChatReplyScoped { .. }
+            | rain_protocol::AgentEvent::TurnActivity { .. } => return,
             rain_protocol::AgentEvent::ChatReply {
                 agent_id,
                 conversation_id,
@@ -543,7 +726,11 @@ impl ChatStore {
                 conversation_id: conv.id,
                 sender_id: id.to_string(),
                 sender_name: name.clone(),
-                sender_type: if system_event { SenderType::System } else { SenderType::Agent },
+                sender_type: if system_event {
+                    SenderType::System
+                } else {
+                    SenderType::Agent
+                },
                 text: text.clone(),
                 status: MessageDeliveryStatus::Delivered,
                 attachments: vec![],

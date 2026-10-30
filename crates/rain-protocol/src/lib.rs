@@ -13,3 +13,6 @@ pub use capability::*;
 pub use chat::*;
 pub use remote::*;
 pub use system::*;
+
+pub mod artifact;
+pub use artifact::*;

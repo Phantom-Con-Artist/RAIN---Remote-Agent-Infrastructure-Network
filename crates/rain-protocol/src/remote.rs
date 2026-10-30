@@ -1,6 +1,6 @@
+use crate::PlatformKind;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::PlatformKind;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileEntry {
@@ -84,10 +84,11 @@ pub struct MachineOverview {
     pub battery: Option<BatteryStatus>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TransportKind {
+    Loopback,
+    Ssh,
     DirectUsb,
     LanMdns,
     WireguardP2p,
@@ -104,7 +105,6 @@ pub struct NetworkMeshStatus {
     pub is_e2ee: bool,
     pub available_transports: Vec<TransportKind>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -160,6 +160,12 @@ pub struct ArtifactTransferRequest {
     pub target_path: String,
     pub size_bytes: u64,
     pub content_base64: Option<String>,
+    #[serde(default)]
+    pub artifact_id: Option<uuid::Uuid>,
+    #[serde(default)]
+    pub source_path: Option<String>,
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,6 +187,10 @@ pub struct PowerFailoverRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpokeRegisterRequest {
+    #[serde(default)]
+    pub is_hub: bool,
+    #[serde(default)]
+    pub endpoint: Option<String>,
     pub device_id: String,
     pub device_name: String,
     pub platform: PlatformKind,
@@ -194,6 +204,8 @@ pub struct SpokeRegisterRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpokeHeartbeatRequest {
+    #[serde(default)]
+    pub children: Vec<crate::NetworkNode>,
     pub device_id: String,
     pub cpu_usage: f32,
     pub memory_used_bytes: u64,

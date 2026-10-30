@@ -18,14 +18,32 @@ pub(super) async fn handle(
     let query = req.uri().query().map(|q| q.to_string());
 
     if method == Method::POST && path == "/api/v1/artifacts/from-file" {
-        #[derive(serde::Deserialize)] struct Export { path: String, machine: Option<String> }
+        #[derive(serde::Deserialize)]
+        struct Export {
+            path: String,
+            machine: Option<String>,
+        }
         let bytes = req.into_body().collect().await?.to_bytes();
         return match serde_json::from_slice::<Export>(&bytes) {
-            Ok(export) => match rain_core::host_access::operate(export.machine.as_deref(),serde_json::json!({"action":"export","path":export.path})).await {
-                Ok(data) => Ok(json_response(StatusCode::OK, &ApiResponse::ok(data))),
-                Err(e) => Ok(json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e))),
+            Ok(export) => match state
+                .chat
+                .artifacts
+                .capture(export.machine.as_deref(), &export.path)
+                .await
+            {
+                Ok(data) => Ok(json_response(
+                    StatusCode::OK,
+                    &ApiResponse::ok(data.attachment()),
+                )),
+                Err(e) => Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &ApiResponse::<()>::err(e),
+                )),
             },
-            Err(e) => Ok(json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e.to_string()))),
+            Err(e) => Ok(json_response(
+                StatusCode::BAD_REQUEST,
+                &ApiResponse::<()>::err(e.to_string()),
+            )),
         };
     }
     let machine = get_query_param(query.as_deref(), "machine");
@@ -75,19 +93,27 @@ pub(super) async fn handle(
         }
 
         (Method::GET, "/api/v1/network/status") => {
+            let transfers = state.chat.artifacts.transfers().await;
+            let hosts: std::collections::HashMap<String, String> = serde_json::from_str(
+                &std::env::var("RAIN_SSH_HOSTS").unwrap_or_else(|_| "{}".into()),
+            )
+            .unwrap_or_default();
             let status = NetworkMeshStatus {
-                current_transport: TransportKind::DirectUsb,
-                node_id: "ed25519:7a4f91b8e3c0".to_string(),
-                latency_ms: 7,
-                bytes_sent: 142_900,
-                bytes_received: 521_400,
-                is_e2ee: true,
-                available_transports: vec![
-                    TransportKind::DirectUsb,
-                    TransportKind::LanMdns,
-                    TransportKind::WireguardP2p,
-                    TransportKind::EncryptedRelay,
-                ],
+                current_transport: TransportKind::Loopback,
+                node_id: format!("hub:{}", sysinfo::System::host_name().unwrap_or_default()),
+                latency_ms: 0,
+                bytes_sent: transfers
+                    .iter()
+                    .filter(|t| t.status == "completed")
+                    .map(|t| t.bytes)
+                    .sum(),
+                bytes_received: 0,
+                is_e2ee: false,
+                available_transports: if hosts.is_empty() {
+                    vec![TransportKind::Loopback]
+                } else {
+                    vec![TransportKind::Loopback, TransportKind::Ssh]
+                },
             };
             Ok(json_response(StatusCode::OK, &ApiResponse::ok(status)))
         }

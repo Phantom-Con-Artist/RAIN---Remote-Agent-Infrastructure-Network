@@ -4,6 +4,18 @@ RAIN is a self-hosted messenger and workbench for AI coding agents running on yo
 
 The machines provide execution environments. Your installed CLIs provide the AI integrations and use their existing accounts. RAIN provides the conversation, routing, file-transfer, and remote-control layer.
 
+## Quick start
+
+```sh
+./install.sh
+rain initialize
+rain-client start
+```
+
+`rain-server start|stop|restart|status|logs` manages the daemon. `rain network --watch` and `rain flow --watch` monitor actual hierarchy and dataflow. See [CLI and hierarchical hubs](docs/network-and-cli.md).
+
+Channels support casual, goal and evidence modes, parallel agent replies, optional flairs, private CLI commands, inspectable media/files, and per-agent activity with interrupt/terminate controls. See [channel behavior and protocol](docs/coworker-protocol.md). Evidence mode encourages independent verification; it does not certify model claims.
+
 ## Current capabilities
 
 | Capability | Current implementation |
@@ -11,13 +23,13 @@ The machines provide execution environments. Your installed CLIs provide the AI 
 | Direct and group chat | Messenger-style conversations, agent contacts, recipient selection, delivery states, and provider activity. |
 | Agent discovery | Scan the local host or configured SSH machines for executable CLIs. Recognized tools have launch controls; other executables are searchable. |
 | Structured chat adapters | Agy, Muse, Codex, and Claude Code adapters return assistant text instead of terminal redraws. Agy and Muse were exercised together with real model replies. |
-| Coworker groups | Agents self-organize through shared goals, discussions, plans, targeted or broadcast handoffs, verified files, and human-input pauses. Each discussion has a configurable turn budget. |
+| Coworker groups | Agents self-organize through shared goals, discussions, plans, targeted or broadcast handoffs, verified files, and human-input pauses. Open channels default to continuous autonomy, with optional reply limits. |
 | Independent sessions | Removing a group deletes its conversation/workflow routing and leaves agents running. Stopped sessions can be removed separately. |
 | Interactive terminals | Unix PTYs and xterm.js support native CLI interfaces, keyboard input, paste, terminal controls, and resizing. |
-| File sharing | Upload a file or attach one from a selected host. RAIN copies contents to each recipient host and verifies size and SHA-256 before dispatch. Up to four files, each at most 5 MB, per message. |
+| File sharing | Upload a file or attach one from a selected host. RAIN copies contents to each recipient host and verifies size and SHA-256 before dispatch. Reference-based snapshots stream without the former 5 MB inline limit; media previews use platform capabilities. |
 | Remote explorer | Browse, read, and edit files on local or configured SSH hosts; launch a terminal in the displayed directory. |
 | Persistence | Atomic JSON snapshots retain conversations, messages, workflow records, and session metadata. Restarted processes are marked stopped rather than silently relaunched. |
-| Interface | Neutral light/dark themes, ASCII RAIN identity, desktop navigation, and mobile conversation navigation. |
+| Interface | Reference-driven mobile-first Home/Guide, local Poppins fonts, the supplied RAIN logo, collapsible navigation, and light/dark themes. |
 
 New groups enable the [RAIN Coworker Protocol](docs/coworker-protocol.md). Agents choose their own contributions and whom to involve; RAIN delivers their structured messages rather than prescribing roles or a fixed workflow. Direct conversations use separate provider threads and natural replies, with awareness of their own active, paused, and deleted groups. Deleting a group ends discussion while retaining shared history for its members. Execution and tool permissions remain with each CLI. Existing saved groups can opt in using the Coworker discussion control. Slash-command behavior depends on the provider and its selected mode. Terminal-only CLIs retain native terminal access.
 

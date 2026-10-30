@@ -10,6 +10,14 @@ use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpokeNodeInfo {
+    #[serde(default)]
+    pub revoked: bool,
+    #[serde(default)]
+    pub is_hub: bool,
+    #[serde(default)]
+    pub endpoint: Option<String>,
+    #[serde(default)]
+    pub children: Vec<rain_protocol::NetworkNode>,
     pub device_id: String,
     pub device_name: String,
     pub platform: PlatformKind,
@@ -55,6 +63,10 @@ pub struct InMemoryStore {
     email_otps: Arc<RwLock<HashMap<String, EmailOtpSession>>>,
     auth_tokens: Arc<RwLock<HashMap<String, String>>>, // token -> device_id
     hub_start_time: chrono::DateTime<chrono::Utc>,
+    pub parent_last_seen: Arc<RwLock<Option<chrono::DateTime<chrono::Utc>>>>,
+    pub parent_path: Arc<RwLock<Vec<String>>>,
+    pub(crate) network_path: Option<std::path::PathBuf>,
+    pub(crate) network_persistence: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl InMemoryStore {
@@ -67,6 +79,10 @@ impl InMemoryStore {
             email_otps: Arc::new(RwLock::new(HashMap::new())),
             auth_tokens: Arc::new(RwLock::new(HashMap::new())),
             hub_start_time: now,
+            parent_last_seen: Arc::new(RwLock::new(None)),
+            parent_path: Arc::new(RwLock::new(Vec::new())),
+            network_path: None,
+            network_persistence: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
@@ -100,7 +116,11 @@ impl InMemoryStore {
         }
     }
 
-    pub async fn generate_pairing_ticket(&self, host_name: &str, host_listen_addr: &str) -> PairingTicketResponse {
+    pub async fn generate_pairing_ticket(
+        &self,
+        host_name: &str,
+        host_listen_addr: &str,
+    ) -> PairingTicketResponse {
         let code = format!("{:06}", (uuid::Uuid::new_v4().as_u128() % 900000) + 100000);
         let now = chrono::Utc::now();
         let expires = now + chrono::Duration::minutes(10);
@@ -122,9 +142,7 @@ impl InMemoryStore {
 
         let deep_link = format!(
             "rain://pair?code={}&host={}&addr={}&expires=600",
-            code,
-            encoded_host,
-            encoded_addr
+            code, encoded_host, encoded_addr
         );
 
         let qr_svg = generate_svg_qr(&deep_link, &code);
@@ -207,7 +225,10 @@ impl InMemoryStore {
         code
     }
 
-    pub async fn verify_email_otp(&self, req: EmailOtpVerifyRequest) -> Result<PairingConfirmResponse, &'static str> {
+    pub async fn verify_email_otp(
+        &self,
+        req: EmailOtpVerifyRequest,
+    ) -> Result<PairingConfirmResponse, &'static str> {
         let email_key = req.email.to_lowercase();
         let mut otps = self.email_otps.write().await;
 
@@ -251,7 +272,8 @@ impl InMemoryStore {
             Ok(PairingConfirmResponse {
                 token,
                 approved: true,
-                host_name: std::env::var("HOSTNAME").unwrap_or_else(|_| "RAIN-Hub-Host".to_string()),
+                host_name: std::env::var("HOSTNAME")
+                    .unwrap_or_else(|_| "RAIN-Hub-Host".to_string()),
                 device_id,
                 role: "collaborator".to_string(),
             })
@@ -261,10 +283,10 @@ impl InMemoryStore {
     }
 
     pub async fn validate_token(&self, token: &str) -> Option<DeviceRegistration> {
-        let tokens = self.auth_tokens.read().await;
-        if let Some(device_id) = tokens.get(token) {
+        let device_id = self.auth_tokens.read().await.get(token).cloned();
+        if let Some(device_id) = device_id {
             let mut devices = self.devices.write().await;
-            if let Some(device) = devices.get_mut(device_id) {
+            if let Some(device) = devices.get_mut(&device_id) {
                 if !device.is_revoked {
                     device.last_seen_at = chrono::Utc::now();
                     return Some(device.clone());
@@ -275,13 +297,22 @@ impl InMemoryStore {
     }
 
     pub async fn get_hub_topology(&self) -> HubTopologyStatus {
-        let devices = self.devices.read().await;
+        let devices: Vec<_> = self.devices.read().await.values().cloned().collect();
+        let live_spokes = self.spokes.read().await.clone();
         let now = chrono::Utc::now();
         let uptime_seconds = (now - self.hub_start_time).num_seconds().max(0) as u64;
 
         let mut spokes = Vec::new();
-        for d in devices.values() {
-            let is_online = !d.is_revoked && (now - d.last_seen_at).num_minutes() < 15;
+        for d in &devices {
+            let is_online = !d.is_revoked
+                && if d.role == "spoke_node" {
+                    live_spokes
+                        .get(&d.device_id)
+                        .map(|s| (now - s.last_heartbeat).num_seconds() < 60)
+                        .unwrap_or(false)
+                } else {
+                    (now - d.last_seen_at).num_minutes() < 15
+                };
             spokes.push(HubSpokeNode {
                 device_id: d.device_id.clone(),
                 device_name: d.device_name.clone(),
@@ -299,8 +330,11 @@ impl InMemoryStore {
 
         HubTopologyStatus {
             hub_name: std::env::var("HOSTNAME").unwrap_or_else(|_| "RAIN-Primary-Hub".to_string()),
-            hub_node_id: "ed25519:7a4f91b8e3c0".to_string(),
-            hub_listen_addr: "0.0.0.0:7890 (LAN / Tailscale / Relay)".to_string(),
+            hub_node_id: crate::network::local_node_id(),
+            hub_listen_addr: format!(
+                "127.0.0.1:{}",
+                std::env::var("RAIN_PORT").unwrap_or_else(|_| "7890".into())
+            ),
             is_hub_online: true,
             uptime_seconds,
             active_spokes_count: active_count,
@@ -309,10 +343,32 @@ impl InMemoryStore {
     }
 
     pub async fn register_spoke(&self, req: SpokeRegisterRequest) -> Result<String, String> {
+        if let Some(code) = &req.pairing_code {
+            self.verify_pairing_code(&req.device_id, code)
+                .await
+                .map_err(str::to_string)?;
+        }
         let now = chrono::Utc::now();
         let token = format!("rain_spoke_{}", uuid::Uuid::new_v4().simple());
 
+        if req.device_id == crate::network::local_node_id() {
+            return Err("A hub cannot enroll itself as a descendant".into());
+        }
+        if self
+            .devices
+            .read()
+            .await
+            .get(&req.device_id)
+            .map(|d| d.is_revoked)
+            .unwrap_or(false)
+        {
+            return Err("Node is revoked; pair it again before reconnecting".into());
+        }
         let spoke_info = SpokeNodeInfo {
+            revoked: false,
+            is_hub: req.is_hub,
+            endpoint: req.endpoint.clone(),
+            children: vec![],
             device_id: req.device_id.clone(),
             device_name: req.device_name.clone(),
             platform: req.platform.clone(),
@@ -365,8 +421,17 @@ impl InMemoryStore {
 
     pub async fn heartbeat_spoke(&self, req: SpokeHeartbeatRequest) -> Result<(), String> {
         let now = chrono::Utc::now();
+        let mut children = req.children;
+        crate::network::validate_subtree(&mut children, &req.device_id)?;
         let mut spokes = self.spokes.write().await;
         if let Some(s) = spokes.get_mut(&req.device_id) {
+            if s.revoked {
+                return Err("Node is revoked".into());
+            }
+            if !s.is_hub && !children.is_empty() {
+                return Err("Worker nodes cannot advertise child hubs".into());
+            }
+            s.children = children;
             s.cpu_usage = req.cpu_usage;
             s.memory_used_bytes = req.memory_used_bytes;
             s.memory_total_bytes = req.memory_total_bytes;
@@ -396,23 +461,119 @@ impl InMemoryStore {
         // Return spokes active in the last 60 seconds
         spokes
             .values()
-            .filter(|s| (now - s.last_heartbeat).num_seconds() < 60)
+            .filter(|s| !s.revoked && (now - s.last_heartbeat).num_seconds() < 60)
             .cloned()
             .collect()
     }
 
-    pub async fn revoke_device(&self, device_id: &str) -> bool {
-        let mut devices = self.devices.write().await;
-        if let Some(device) = devices.get_mut(device_id) {
-            device.is_revoked = true;
-            // Also invalidate tokens
-            let mut tokens = self.auth_tokens.write().await;
-            tokens.retain(|_, id| id != device_id);
-            true
-        } else {
-            false
+    pub async fn restore_network(path: &std::path::Path) -> Result<Self, String> {
+        let mut store = Self::new();
+        store.network_path = Some(path.into());
+        match tokio::fs::read(path).await {
+            Ok(bytes) => {
+                let snapshot: NetworkSnapshot = serde_json::from_slice(&bytes)
+                    .map_err(|e| format!("Cannot load network state: {e}"))?;
+                *store.devices.write().await = snapshot.devices;
+                let mut spokes = snapshot.spokes;
+                for spoke in spokes.values_mut() {
+                    spoke.last_heartbeat = chrono::Utc::now() - chrono::Duration::seconds(61);
+                }
+                *store.spokes.write().await = spokes;
+                *store.auth_tokens.write().await = snapshot.tokens;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+            Err(e) => return Err(e.to_string()),
         }
+        Ok(store)
     }
+    pub async fn persist_network(&self) -> Result<(), String> {
+        let Some(path) = &self.network_path else {
+            return Ok(());
+        };
+        let _serial = self.network_persistence.lock().await;
+        let devices = self.devices.read().await.clone();
+        let spokes = self.spokes.read().await.clone();
+        let tokens = self.auth_tokens.read().await.clone();
+        let bytes = serde_json::to_vec(&NetworkSnapshot {
+            devices,
+            spokes,
+            tokens,
+        })
+        .map_err(|e| e.to_string())?;
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        let temporary = path.with_extension("json.tmp");
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        use tokio::io::AsyncWriteExt;
+        let mut file = options.open(&temporary).await.map_err(|e| e.to_string())?;
+        file.write_all(&bytes).await.map_err(|e| e.to_string())?;
+        file.sync_all().await.map_err(|e| e.to_string())?;
+        drop(file);
+        tokio::fs::rename(temporary, path)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    pub async fn network_children(&self) -> Vec<rain_protocol::NetworkNode> {
+        let now = chrono::Utc::now();
+        let spokes = self.spokes.read().await;
+        spokes
+            .values()
+            .map(|s| {
+                let online = !s.revoked && (now - s.last_heartbeat).num_seconds() < 60;
+                let mut children = s.children.clone();
+                crate::network::refresh_liveness(&mut children, online);
+                rain_protocol::NetworkNode {
+                    revoked: s.revoked,
+                    id: s.device_id.clone(),
+                    name: s.device_name.clone(),
+                    role: if s.is_hub { "hub" } else { "worker" }.into(),
+                    parent_id: Some(crate::network::local_node_id()),
+                    endpoint: s.endpoint.clone(),
+                    online,
+                    last_seen: s.last_heartbeat,
+                    cpu_cores: s.cpu_cores,
+                    ram_total_bytes: s.memory_total_bytes,
+                    ram_available_bytes: s.memory_total_bytes.saturating_sub(s.memory_used_bytes),
+                    active_agents: s.active_agents_count,
+                    children,
+                }
+            })
+            .collect()
+    }
+    pub async fn revoke_device(&self, device_id: &str) -> bool {
+        let revoked = {
+            let mut devices = self.devices.write().await;
+            if let Some(device) = devices.get_mut(device_id) {
+                device.is_revoked = true;
+                true
+            } else {
+                false
+            }
+        };
+        if revoked {
+            self.auth_tokens
+                .write()
+                .await
+                .retain(|_, id| id != device_id);
+            if let Some(node) = self.spokes.write().await.get_mut(device_id) {
+                node.revoked = true;
+            }
+        }
+        revoked
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct NetworkSnapshot {
+    devices: HashMap<String, DeviceRegistration>,
+    spokes: HashMap<String, SpokeNodeInfo>,
+    tokens: HashMap<String, String>,
 }
 
 impl Default for InMemoryStore {
@@ -441,9 +602,9 @@ fn generate_svg_qr(payload: &str, _code: &str) -> String {
     };
 
     // Draw 3 standard corner finders
-    draw_finder(0, 0);              // Top-left
-    draw_finder(0, size - 7);       // Top-right
-    draw_finder(size - 7, 0);       // Bottom-left
+    draw_finder(0, 0); // Top-left
+    draw_finder(0, size - 7); // Top-right
+    draw_finder(size - 7, 0); // Bottom-left
 
     // Timing lines (row 6 and col 6 alternating)
     for i in 8..(size - 8) {

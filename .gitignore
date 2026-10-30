@@ -59,3 +59,10 @@ scratch/
 
 # Local conversation history
 .rain/
+
+# Python helpers
+__pycache__/
+*.pyc
+
+# Local visual-review screenshots and measurements
+.taste-skill/

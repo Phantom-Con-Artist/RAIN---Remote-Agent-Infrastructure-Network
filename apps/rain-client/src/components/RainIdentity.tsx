@@ -1,2 +1,2 @@
-import React from 'react';
-export function RainIdentity(){return <div className="rain-identity" aria-label="RAIN"><pre className="rain-logo" aria-hidden="true">{'|\\\n|_)\n| \\'}</pre><pre className="rain-wordmark" aria-hidden="true">{' ____      _    ___ _   _\n|  _ \\    / \\  |_ _| \\ | |\n| |_) |  / _ \\  | ||  \\| |\n|  _ <  / ___ \\ | || |\\  |\n|_| \\_\\/_/   \\_\\___|_| \\_|'}</pre><span className="sr-only">RAIN</span></div>}
+import logo from '../assets/rain-logo.png';
+export function RainIdentity(){return <span className="rain-identity"><img className="rain-logo-image" src={logo} alt=""/><span className="rain-type-wordmark">rain<span className="rain-wordmark-dot">.</span></span><span className="sr-only">RAIN</span></span>}

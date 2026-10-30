@@ -62,6 +62,10 @@ pub struct ChatMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Conversation {
+    #[serde(default)]
+    pub native_settings: NativeChatSettings,
+    #[serde(default)]
+    pub native_terminal_id: Option<uuid::Uuid>,
     pub id: uuid::Uuid,
     pub title: String,
     pub is_group: bool,
@@ -118,8 +122,9 @@ pub enum CoworkerKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct CoworkerEnvelope {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flair: Option<MessageFlair>,
     pub rain_coworker: u8,
     pub run_id: uuid::Uuid,
     pub kind: CoworkerKind,
@@ -133,9 +138,15 @@ pub struct CoworkerEnvelope {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollaborationState {
+    #[serde(default)]
+    pub mode: ConversationMode,
+    #[serde(default)]
+    pub interrupted_ids: Vec<String>,
+    #[serde(default)]
+    pub addressed_ids: Vec<String>,
     pub enabled: bool,
-    pub max_turns: u8,
-    pub remaining_turns: u8,
+    pub max_turns: u32,
+    pub remaining_turns: u32,
     pub run_id: Option<uuid::Uuid>,
     pub waiting_for_human: bool,
     pub human_request: Option<String>,
@@ -147,9 +158,12 @@ pub struct CollaborationState {
 impl Default for CollaborationState {
     fn default() -> Self {
         Self {
+            mode: ConversationMode::Casual,
+            interrupted_ids: vec![],
+            addressed_ids: vec![],
             enabled: true,
-            max_turns: 8,
-            remaining_turns: 8,
+            max_turns: 0,
+            remaining_turns: 0,
             run_id: None,
             waiting_for_human: false,
             human_request: None,
@@ -163,7 +177,7 @@ impl Default for CollaborationState {
 #[serde(deny_unknown_fields)]
 pub struct CollaborationRequest {
     pub enabled: bool,
-    pub max_turns: u8,
+    pub max_turns: u32,
 }
 
 /// Membership-scoped group history. A deleted group is remembered but never routable.
@@ -172,4 +186,45 @@ pub struct GroupMemory {
     pub conversation: Conversation,
     pub messages: Vec<ChatMessage>,
     pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NativeChatSettings {
+    pub model: Option<String>,
+    pub effort: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageFlair {
+    Question,
+    Idea,
+    Review,
+    Decision,
+    Blocker,
+    Casual,
+    Update,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationMode {
+    #[default]
+    Casual,
+    Goal,
+    Evidence,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModeRequest {
+    pub mode: ConversationMode,
+    pub context: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentTrace {
+    pub id: uuid::Uuid,
+    pub dispatch_id: uuid::Uuid,
+    pub conversation_id: uuid::Uuid,
+    pub agent_id: uuid::Uuid,
+    pub step: String,
+    pub timestamp: DateTime<Utc>,
 }

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use rain_protocol::{
-    ArtifactTransferRequest, BatteryStatus, FileEntry, InstalledApp, MachineOverview, MachineResourceCatalog,
-    PlatformKind, ReadFileResponse, TerminalExecuteRequest, TerminalExecuteResponse,
+    BatteryStatus, FileEntry, InstalledApp, MachineOverview, MachineResourceCatalog, PlatformKind,
+    ReadFileResponse, TerminalExecuteRequest, TerminalExecuteResponse,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -167,9 +167,9 @@ impl RemoteManager {
             let meta = entry.metadata().ok();
             let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
             let size_bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-            let modified_time = meta.and_then(|m| m.modified().ok()).map(|st| {
-                DateTime::<Utc>::from(st)
-            });
+            let modified_time = meta
+                .and_then(|m| m.modified().ok())
+                .map(|st| DateTime::<Utc>::from(st));
 
             let is_editable = !is_dir && is_text_editable(&file_name);
 
@@ -235,9 +235,11 @@ impl RemoteManager {
     pub fn write_file(&self, req_path: &str, content: &str) -> Result<(), String> {
         let target = Self::resolve_path(req_path);
         if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {}", e))?;
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create directories: {}", e))?;
         }
-        fs::write(&target, content).map_err(|e| format!("Failed to write file '{}': {}", target.display(), e))
+        fs::write(&target, content)
+            .map_err(|e| format!("Failed to write file '{}': {}", target.display(), e))
     }
 
     pub fn list_installed_apps(&self) -> Vec<InstalledApp> {
@@ -286,7 +288,11 @@ impl RemoteManager {
         installed
     }
 
-    pub async fn launch_app(&self, app_id: &str, custom_args: Option<Vec<String>>) -> Result<String, String> {
+    pub async fn launch_app(
+        &self,
+        app_id: &str,
+        custom_args: Option<Vec<String>>,
+    ) -> Result<String, String> {
         let args = custom_args.unwrap_or_default();
         let display = std::env::var("DISPLAY").unwrap_or_else(|_| ":0".to_string());
         let wayland_display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
@@ -305,7 +311,10 @@ impl RemoteManager {
         match cmd.spawn() {
             Ok(child) => {
                 let pid = child.id().unwrap_or(0);
-                Ok(format!("Application '{}' launched successfully (PID: {})", app_id, pid))
+                Ok(format!(
+                    "Application '{}' launched successfully (PID: {})",
+                    app_id, pid
+                ))
             }
             Err(e) => Err(format!("Failed to launch application '{}': {}", app_id, e)),
         }
@@ -320,7 +329,9 @@ impl RemoteManager {
         let resolved_cwd = Self::resolve_path(cwd);
 
         if req.is_sudo {
-            let password = req.sudo_password.ok_or_else(|| "Sudo password is required for privileged command".to_string())?;
+            let password = req
+                .sudo_password
+                .ok_or_else(|| "Sudo password is required for privileged command".to_string())?;
 
             let mut child = Command::new("sudo")
                 .arg("-S")
@@ -384,7 +395,10 @@ impl RemoteManager {
         let memory_total_bytes = sys.total_memory();
         let memory_used_bytes = sys.used_memory();
         let disk_total_bytes: u64 = disks.iter().map(|d| d.total_space()).sum();
-        let disk_used_bytes: u64 = disks.iter().map(|d| d.total_space().saturating_sub(d.available_space())).sum();
+        let disk_used_bytes: u64 = disks
+            .iter()
+            .map(|d| d.total_space().saturating_sub(d.available_space()))
+            .sum();
         let uptime_seconds = System::uptime();
 
         let host_machine = MachineOverview {
@@ -445,9 +459,9 @@ impl RemoteManager {
             cpu_cores,
             ram_total_gb: (ram_total_gb * 10.0).round() / 10.0,
             ram_free_gb: (ram_free_gb * 10.0).round() / 10.0,
-            gpu_model: Some("NVIDIA GeForce RTX 4090 (24GB VRAM)".to_string()),
-            network_speed_mbps: 1000,
-            tags: vec!["cuda-12".to_string(), "docker".to_string(), "sqlite".to_string(), "gpu-accelerated".to_string()],
+            gpu_model: None,
+            network_speed_mbps: 0,
+            tags: vec!["host".into()],
             battery: Self::read_real_battery(),
         };
 
@@ -462,9 +476,14 @@ impl RemoteManager {
                     platform: s.platform,
                     cpu_cores: s.cpu_cores,
                     ram_total_gb: s.ram_total_gb,
-                    ram_free_gb: ((s.memory_total_bytes.saturating_sub(s.memory_used_bytes) as f32) / (1024.0 * 1024.0 * 1024.0) * 10.0).round() / 10.0,
+                    ram_free_gb: ((s.memory_total_bytes.saturating_sub(s.memory_used_bytes)
+                        as f32)
+                        / (1024.0 * 1024.0 * 1024.0)
+                        * 10.0)
+                        .round()
+                        / 10.0,
                     gpu_model: s.gpu_model,
-                    network_speed_mbps: 1000,
+                    network_speed_mbps: 0,
                     tags: vec!["spoke-mesh".to_string(), "live-heartbeat".to_string()],
                     battery: s.battery,
                 });
@@ -472,16 +491,6 @@ impl RemoteManager {
         }
 
         catalogs
-    }
-
-    pub fn handle_artifact_transfer(&self, req: ArtifactTransferRequest) -> Result<String, String> {
-        let dest = Self::resolve_path(&req.target_path);
-        if let Some(parent) = dest.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        let dummy_data = format!("Transferred artifact '{}' ({} bytes) from {} to {}", req.file_name, req.size_bytes, req.source_machine, req.target_machine);
-        fs::write(&dest, dummy_data).map_err(|e| e.to_string())?;
-        Ok(format!("Artifact '{}' transferred and staged on target machine at {}", req.file_name, dest.display()))
     }
 }
 
@@ -499,11 +508,13 @@ fn is_binary_available(bin: &str) -> bool {
 fn is_text_editable(file_name: &str) -> bool {
     let lower = file_name.to_lowercase();
     let text_extensions = [
-        ".rs", ".ts", ".js", ".json", ".toml", ".md", ".txt", ".sh", ".bash",
-        ".yaml", ".yml", ".css", ".html", ".py", ".c", ".cpp", ".h", ".sql",
-        ".env", ".xml", ".kt", ".gradle", ".conf", ".ini", ".log"
+        ".rs", ".ts", ".js", ".json", ".toml", ".md", ".txt", ".sh", ".bash", ".yaml", ".yml",
+        ".css", ".html", ".py", ".c", ".cpp", ".h", ".sql", ".env", ".xml", ".kt", ".gradle",
+        ".conf", ".ini", ".log",
     ];
-    text_extensions.iter().any(|ext| lower.ends_with(ext)) || lower == "dockerfile" || lower == "makefile"
+    text_extensions.iter().any(|ext| lower.ends_with(ext))
+        || lower == "dockerfile"
+        || lower == "makefile"
 }
 
 impl Default for RemoteManager {

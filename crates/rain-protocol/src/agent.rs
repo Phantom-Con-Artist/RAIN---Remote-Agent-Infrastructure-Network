@@ -61,8 +61,32 @@ pub struct AgentStopRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
-    ChatReply { agent_id: uuid::Uuid, conversation_id: uuid::Uuid, text: String },
-    ActivityChanged { agent_id: uuid::Uuid, state: crate::SessionState },
+    Trace {
+        agent_id: uuid::Uuid,
+        dispatch_id: uuid::Uuid,
+        step: String,
+    },
+    TurnActivity {
+        agent_id: uuid::Uuid,
+        dispatch_id: uuid::Uuid,
+        state: String,
+        error: Option<String>,
+    },
+    ChatReplyScoped {
+        agent_id: uuid::Uuid,
+        conversation_id: uuid::Uuid,
+        run_id: Option<uuid::Uuid>,
+        text: String,
+    },
+    ChatReply {
+        agent_id: uuid::Uuid,
+        conversation_id: uuid::Uuid,
+        text: String,
+    },
+    ActivityChanged {
+        agent_id: uuid::Uuid,
+        state: crate::SessionState,
+    },
     Output {
         agent_id: uuid::Uuid,
         stream: String, // "stdout" or "stderr"

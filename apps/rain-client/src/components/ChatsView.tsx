@@ -1,5 +1,9 @@
-import {AttachmentPicker, downloadAttachment} from './AttachmentPicker';
+import {MessageText} from './MessageText';
+import {ChatComposer} from './ChatComposer';
+import {ChatActivity} from './ChatActivity';
+import {AttachmentPicker} from './AttachmentPicker';
 import { TerminalPanel } from './TerminalPanel';
+import {AttachmentCard} from './AttachmentCard';
 import { GroupAwareness } from './GroupAwareness';
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -12,12 +16,10 @@ import {
   FiUser,
   FiCheck,
   FiX,
-  FiAlertTriangle,
-  FiActivity,
-  FiPaperclip
+  FiActivity, FiPaperclip
 } from 'react-icons/fi';
 import { Conversation, ChatMessage, AgentSession, ChatAttachment } from '../types';
-import { formatTime } from '../api';
+import { apiRequest, formatTime } from '../api';
 
 interface ChatsViewProps {
   conversations: Conversation[];
@@ -52,7 +54,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
   onCollaborationChange,
   onDeleteConversation,
   onApproveJob,
-  onTriggerBatteryEvacuate,
+
   isMobileChatOpen,
   onCloseMobileChat,
 }) => {
@@ -76,11 +78,16 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const pinnedToBottom = useRef(true);
 
+  const currentId=useRef(activeConversationId);currentId.current=activeConversationId;
+  const drafts=useRef<Record<string,{text:string;files:ChatAttachment[]}>>({});
+  const previousId=useRef<string|null>(null);
+  const draftState=useRef({text:inputText,files:pendingFiles});
   const activeConv = conversations.find(c => c.id === activeConversationId) || null;
 
   const directMember = !activeConv?.is_group ? sessions.find(s => activeConv?.participant_ids.includes(s.id)) : undefined;
   const interactiveMembers = sessions.filter(s => s.interactive && activeConv?.participant_ids.includes(s.id));
-  useEffect(() => {pinnedToBottom.current=true;setTerminalId(null); setTargetSessionId('all'); setInputText('');setPendingFiles([]);setAttachmentError('');setControlError('');}, [activeConv?.id]);
+  useEffect(() => {pinnedToBottom.current=true;setTerminalId(null); setTargetSessionId('all'); if(previousId.current)drafts.current[previousId.current]=draftState.current;const draft=activeConv?drafts.current[activeConv.id]:undefined;setInputText(draft?.text||'');setPendingFiles(draft?.files||[]);previousId.current=activeConv?.id||null;setAttachmentError('');setControlError('');}, [activeConv?.id]);
+  useEffect(()=>{draftState.current={text:inputText,files:pendingFiles}},[inputText,pendingFiles]);
   const workingMembers = sessions.filter(s=>activeConv?.participant_ids.includes(s.id)&&['working','thinking','responding'].includes(s.state));
   const visibleMessages = messages.filter(m => m.sender_type === 'human' || !m.text.includes('\x1b'));
 
@@ -105,11 +112,12 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
     const text = inputText.trim();
     if ((!text&&!pendingFiles.length) || isSubmitting || !activeConversationId) return;
 
+    const sendingId=activeConversationId;
     setIsSubmitting(true);
     try {
       await onSendMessage(text||'Shared files.', targetSessionId === 'all' ? null : targetSessionId, pendingFiles);
-      setPendingFiles([]);
-      setInputText('');
+      delete drafts.current[sendingId];
+      if(currentId.current===sendingId){setPendingFiles([]);setInputText('');}
     } catch {
       // Keep the draft so a failed delivery can be retried.
     } finally {
@@ -117,19 +125,18 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
     }
   };
 
-  const handlePromptClick = (prompt: string) => {
-    if (prompt.includes('5%') || prompt.includes('Battery')) {
-      onTriggerBatteryEvacuate();
-    } else {
-      setInputText(prompt);
-    }
-  };
+  const handlePromptClick = (prompt:string) => setInputText(prompt);
+  const [modeValue,setModeValue]=useState('casual');
+  const [settingsOpen,setSettingsOpen]=useState(false);
+  useEffect(()=>{const media=window.matchMedia('(min-width: 601px)');const change=()=>setSettingsOpen(false);media.addEventListener('change',change);return()=>media.removeEventListener('change',change)},[]);
+  useEffect(()=>setModeValue(activeConv?.collaboration?.mode||'casual'),[activeConv?.id,activeConv?.collaboration?.mode]);
+  const changeMode=(mode:string)=>runControl(async()=>{await apiRequest(`/api/v1/conversations/${activeConv!.id}/mode`,{method:'PATCH',body:JSON.stringify({mode})});setModeValue(mode)});
 
   return (
     <div className={`chats-layout ${isMobileChatOpen ? 'mobile-chat-active' : 'mobile-roster-active'}`}>
       {/* 1. Conversations Roster Column */}
       <aside className="roster-column">
-        <div className="messenger-heading"><h2>Chats</h2><button className="icon-button" onClick={onOpenNewGroup}><FiPlus size={18}/>New group</button></div>
+        <div className="messenger-heading"><h1>Conversations</h1><button className="icon-button" onClick={onOpenNewGroup}><FiPlus size={18}/>New group</button></div>
         <label className="conversation-search"><span className="sr-only">Search conversations</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search chats and agents"/></label>
         <div className="roster-header">
           <div className="roster-filter-pills">
@@ -212,6 +219,8 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
               </div>
 
               <div className="header-actions">
+                {directMember?.provider.endsWith('_chat')&&<button className="icon-button" disabled={controlBusy} onClick={()=>runControl(async()=>{const r=await apiRequest<{id:string}>(`/api/v1/conversations/${activeConv.id}/native-terminal`,{method:'POST'});setTerminalId(r.data.id)})}>Native CLI</button>}
+                {terminalId&&<button className="icon-button" onClick={()=>setTerminalId(null)}>Back to chat</button>}
                 {interactiveMembers.length > 0 && <select aria-label="Open agent terminal" value={terminalId || ''} onChange={e => setTerminalId(e.target.value || null)}><option value="">Conversation</option>{interactiveMembers.map(s=><option key={s.id} value={s.id}>{s.name} terminal</option>)}</select>}
                 {!activeConv.is_active && <button className="icon-button" disabled={controlBusy} onClick={() => runControl(() => onResumeConversation(activeConv.id))}>Resume</button>}
                 {activeConv.is_active && (
@@ -224,39 +233,43 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                     <span>Pause</span>
                   </button>
                 )}
-                <button
+                <details className="chat-more"><summary>Options</summary><div><button
                   className="icon-button"
                   onClick={() => onDeleteConversation(activeConv.id)}
                   title="Delete conversation"
                 >
-                  <FiTrash2 size={14} />
-                </button>
+                  <FiTrash2 size={14} /> Delete conversation
+                </button></div></details>
               </div>
             </div>
 
-            {activeConv.is_group && <div className="coworker-controls">
+            {activeConv.is_group && <details className="coworker-controls" open={settingsOpen} onToggle={e=>setSettingsOpen(e.currentTarget.open)}><summary>Channel settings · {modeValue.charAt(0).toUpperCase()+modeValue.slice(1)}</summary>
               <div className="coworker-mode">
+                <label>Mode <select aria-label="Conversation mode" value={modeValue} disabled={controlBusy} onChange={e=>changeMode(e.target.value)}><option value="casual">Casual</option><option value="goal">Goal</option><option value="evidence">Evidence</option></select></label>
                 <label><input type="checkbox" checked={activeConv.collaboration?.enabled ?? false} disabled={controlBusy}
-                  onChange={e => runControl(() => onCollaborationChange(activeConv.id, e.target.checked, activeConv.collaboration?.max_turns ?? 8))}/>
-                  Coworker discussion</label>
-                <label>Turn limit <select aria-label="Coworker turn limit" value={activeConv.collaboration?.max_turns ?? 8} disabled={controlBusy}
+                  onChange={e => runControl(() => onCollaborationChange(activeConv.id, e.target.checked, activeConv.collaboration?.max_turns ?? 0))}/>
+                  Autonomous channel</label>
+                <label>Discussion <select aria-label="Channel discussion limit" value={activeConv.collaboration?.max_turns ?? 0} disabled={controlBusy}
                   onChange={e => runControl(() => onCollaborationChange(activeConv.id, activeConv.collaboration?.enabled ?? true, Number(e.target.value)))}>
-                  {[1, 4, 8, 16, 32].map(n => <option key={n} value={n}>{n}</option>)}
-                  {activeConv.collaboration && ![1, 4, 8, 16, 32].includes(activeConv.collaboration.max_turns) && <option value={activeConv.collaboration.max_turns}>{activeConv.collaboration.max_turns}</option>}
+                  {[0, 4, 8, 16, 32].map(n => <option key={n} value={n}>{n===0?'Continuous':`${n} replies`}</option>)}
+                  {activeConv.collaboration && ![0, 4, 8, 16, 32].includes(activeConv.collaboration.max_turns) && <option value={activeConv.collaboration.max_turns}>{activeConv.collaboration.max_turns}</option>}
                 </select></label>
               </div>
-              {activeConv.collaboration?.human_goal && <details className="coworker-brief"><summary>Shared goal</summary><p>{activeConv.collaboration.human_goal}</p></details>}
+              {modeValue==='evidence'&&<p>Verify claims independently, cite sources, and challenge unsupported agreement. Sources remain open to review.</p>}
+              {modeValue==='goal'&&<p>Work toward your stated outcome, review results, and surface decisions that need you.</p>}
+              {activeConv.collaboration?.human_goal && <details className="coworker-brief"><summary>Channel context</summary><p>{activeConv.collaboration.human_goal}</p></details>}
               <p>{activeConv.collaboration?.enabled
-                ? `Agents can plan and share files · ${activeConv.collaboration.remaining_turns} turns left.`
-                : 'Messages go to the selected agents. Enable coworker discussion to allow agent handoffs.'}</p>
+                ? activeConv.collaboration.max_turns===0 ? 'Open conversation · members may reply in parallel. Mention an agent to direct a message.' : `Open conversation · ${activeConv.collaboration.remaining_turns} replies remain in this session.`
+                : 'Autonomous discussion is off. Your messages still reach the selected agents.'}</p>
               {activeConv.collaboration?.waiting_for_human && <div className="coworker-human-request" role="status">
                 <details><summary>Your input is needed</summary><p>{activeConv.collaboration.human_request}</p></details>
                 <span>Reply below to continue the discussion.</span>
               </div>}
-            </div>}
+            </details>}
             {controlError && <p className="coworker-control-error" role="alert">{controlError}</p>}
 
-            {directMember?.provider.endsWith('_chat') && <GroupAwareness key={activeConv.id} agentId={directMember.id}/>}
+            {directMember?.provider.endsWith('_chat') && <GroupAwareness key={`group-awareness:${activeConv.id}`} agentId={directMember.id}/>}
+            <ChatActivity key={`activity:${activeConv.id}`} id={activeConv.id} members={sessions.filter(s=>activeConv.participant_ids.includes(s.id))}/>
             {/* Messages Feed */}
             {terminalId ? <div className="chat-terminal"><TerminalPanel key={terminalId} id={terminalId}/></div> : <div className="chat-messages-scroll" ref={containerRef} onScroll={e=>{const el=e.currentTarget;pinnedToBottom.current=el.scrollHeight-el.scrollTop-el.clientHeight<120}}>
               {interactiveMembers.length>0 && <div className="native-chat-notice">{interactiveMembers.map(s=>s.name).join(', ')} uses terminal mode. Open its terminal above, or start a chat adapter from Machines for message replies.</div>}
@@ -267,12 +280,13 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                   )}
 
                   <div className="message-bubble">
-                    {msg.coworker && <div className="coworker-message-meta">
+                    {msg.coworker && msg.coworker.kind!=='discuss' && <div className="coworker-message-meta">
                       <strong>{({discuss: 'Discussion', plan: 'Plan', handoff: 'Handoff', human_input: 'Needs your input', complete: 'Outcome'})[msg.coworker.kind]}</strong>
                       {msg.coworker.to.length > 0 && <span>To {msg.coworker.to.map(id => id === 'all' ? 'all coworkers' : sessions.find(s => s.id === id)?.name ?? id).join(', ')}</span>}
                     </div>}
-                    {msg.text}
-                    {msg.attachments?.map(file=><button type="button" className="message-attachment" key={file.id} onClick={()=>downloadAttachment(file)} disabled={!file.data_base64}><FiPaperclip/><span><strong>{file.name}</strong><small>{(file.size_bytes/1024).toFixed(1)} KB · Download</small></span></button>)}
+                    {msg.coworker?.flair&&<span className="message-flair">{msg.coworker.flair}</span>}
+                    {msg.sender_type==='system'&&msg.sender_name.includes('CLI')?<details className="cli-result"><summary>CLI result</summary><pre>{msg.text}</pre></details>:<MessageText text={msg.text}/>}
+                    {msg.attachments?.map(file=><AttachmentCard key={file.id} file={file}/>)}
 
                     {/* Job Delegation & Work Unit */}
                     {msg.job_delegation && (
@@ -382,13 +396,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
 
             {/* Quick Prompt Bar */}
             <div className="quick-prompts-row">
-              <button
-                className="quick-action-btn evacuate"
-                onClick={() => handlePromptClick('5% Battery Evacuate')}
-              >
-                <FiAlertTriangle size={13} />
-                <span>5% Battery Evacuate to GitHub</span>
-              </button>
+              <button className="quick-action-btn" onClick={()=>handlePromptClick('Let’s chat. What movie would you recommend, and why?')}>Talk about movies</button>
               <button
                 className="quick-action-btn"
                 onClick={() => handlePromptClick('Check system health and machine load')}
@@ -404,7 +412,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
               </button>
             </div>
 
-            {!terminalId&&<div className="attachment-toolbar"><AttachmentPicker disabled={!activeConv.is_active||isSubmitting||pendingFiles.length>=4} onAttach={file=>{if(pendingFiles.length>=4){setAttachmentError('Up to four files per message');return}setPendingFiles(previous=>[...previous,file]);setAttachmentError('')}}/>{pendingFiles.map(file=><div className="pending-attachment" key={file.id}><span>{file.name}</span><button type="button" aria-label={`Remove attachment ${file.name}`} onClick={()=>setPendingFiles(files=>files.filter(f=>f.id!==file.id))}>Remove</button></div>)}{attachmentError&&<p role="alert">{attachmentError}</p>}</div>}
+            {!terminalId&&<details className="attachment-toolbar"><summary><FiPaperclip size={14}/>Attach files{pendingFiles.length?` · ${pendingFiles.length}`:''}</summary><AttachmentPicker key={activeConv.id} disabled={!activeConv.is_active||isSubmitting||false} onAttach={file=>{setPendingFiles(previous=>[...previous,file]);setAttachmentError('')}}/>{pendingFiles.map(file=><div className="pending-attachment" key={file.id}><span>{file.name}</span><button type="button" aria-label={`Remove attachment ${file.name}`} onClick={()=>setPendingFiles(files=>files.filter(f=>f.id!==file.id))}>Remove</button></div>)}{attachmentError&&<p role="alert">{attachmentError}</p>}</details>}
             {/* Message Input Toolbar */}
             {!terminalId && <form className="chat-input-bar" onSubmit={handleSend}>
               <select
@@ -428,15 +436,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({
                 ))}
               </select>
 
-              <textarea
-                rows={1}
-                onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleSend();}}}
-                className="chat-input-field"
-                placeholder={!activeConv.is_active ? 'Conversation is paused' : activeConv.collaboration?.waiting_for_human ? 'Give direction to your coworkers…' : 'Message, @session, or /command…'}
-                disabled={!activeConv.is_active || isSubmitting}
-                value={inputText}
-                onChange={e => setInputText(e.target.value)}
-              />
+              <ChatComposer key={activeConv.id} id={activeConv.id} members={sessions.filter(s=>activeConv.participant_ids.includes(s.id))} group={activeConv.is_group} value={inputText} onChange={setInputText} onSend={()=>handleSend()} disabled={!activeConv.is_active||isSubmitting} placeholder={!activeConv.is_active?'Conversation is paused':activeConv.is_group?'Message this channel…':'Message or /help…'}/>
 
               <button
                 type="submit"

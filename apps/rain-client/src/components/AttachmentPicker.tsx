@@ -1,19 +1,28 @@
-import React,{useRef,useState} from 'react';
+import React,{useRef,useState,useEffect} from 'react';
 import {FiPaperclip} from 'react-icons/fi';
-import {apiRequest} from '../api';
+import {apiRequest,getHostUrl,getAuthToken} from '../api';
 import {ChatAttachment} from '../types';
 import {MachinePicker} from './MachinePicker';
 export function AttachmentPicker({disabled,onAttach}:{disabled:boolean;onAttach:(attachment:ChatAttachment)=>void}){
- const fileInput=useRef<HTMLInputElement>(null);
- const [hostPath,setHostPath]=useState(''),[machine,setMachine]=useState(''),[showHost,setShowHost]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- async function upload(file:File){setError('');if(file.size>5*1024*1024){setError('Files must be 5 MB or smaller');return}setBusy(true);try{const base64=await new Promise<string>((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(Error('Cannot read file'));r.readAsDataURL(file)});onAttach({id:crypto.randomUUID(),name:file.name,mime_type:file.type||'application/octet-stream',size_bytes:file.size,data_base64:base64});}catch(e:any){setError(e.message)}finally{setBusy(false);if(fileInput.current)fileInput.current.value=''}}
- async function fromHost(e:React.FormEvent){e.preventDefault();setError('');setBusy(true);try{const r=await apiRequest<ChatAttachment>('/api/v1/artifacts/from-file',{method:'POST',body:JSON.stringify({path:hostPath,machine:machine||null})});onAttach(r.data);setHostPath('');setShowHost(false)}catch(e:any){setError(e.message)}finally{setBusy(false)}}
+ const fileInput=useRef<HTMLInputElement>(null),request=useRef<XMLHttpRequest|null>(null);
+ const mounted=useRef(true);useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;request.current?.abort()}},[]);
+ const [hostPath,setHostPath]=useState(''),[machine,setMachine]=useState(''),[showHost,setShowHost]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[progress,setProgress]=useState('');
+ async function upload(files:FileList){setError('');setBusy(true);try{for(const file of Array.from(files)){
+  setProgress(`Uploading ${file.name}…`);
+  const attachment=await new Promise<ChatAttachment>((resolve,reject)=>{const xhr=new XMLHttpRequest();request.current=xhr;xhr.open('POST',`${getHostUrl()}/api/v1/artifacts/upload?name=${encodeURIComponent(file.name)}`);xhr.setRequestHeader('Content-Type','application/octet-stream');if(getAuthToken())xhr.setRequestHeader('Authorization',`Bearer ${getAuthToken()}`);
+   xhr.upload.onprogress=e=>{if(e.lengthComputable)setProgress(`${file.name} · ${Math.round(e.loaded/e.total*100)}%`)};
+   xhr.onload=()=>{try{const response=JSON.parse(xhr.responseText);if(xhr.status>=400||!response.success)throw Error(response.error||'Upload failed');resolve(response.data)}catch(e){reject(e)}};
+   xhr.onerror=()=>reject(Error('Upload interrupted. Choose the file again to retry.'));xhr.onabort=()=>reject(Error('Upload cancelled.'));xhr.send(file);
+  });if(mounted.current)onAttach(attachment);else break;
+ }}catch(e){setError(e instanceof Error?e.message:'Upload failed')}finally{request.current=null;setBusy(false);setProgress('');if(fileInput.current)fileInput.current.value=''}}
+ async function fromHost(e:React.FormEvent){e.preventDefault();setError('');setBusy(true);setProgress('Preparing file…');try{const r=await apiRequest<ChatAttachment>('/api/v1/artifacts/from-file',{method:'POST',body:JSON.stringify({path:hostPath,machine:machine||null}),signal:AbortSignal.timeout(300000)});if(mounted.current)onAttach(r.data);setHostPath('');setShowHost(false)}catch(e){setError(e instanceof Error?e.message:'Could not fetch file')}finally{setBusy(false);setProgress('')}}
  return <div className="attachment-picker">
- <input ref={fileInput} type="file" hidden onChange={e=>{const file=e.target.files?.[0];if(file)upload(file)}}/>
- <button type="button" className="icon-button" disabled={disabled||busy} onClick={()=>fileInput.current?.click()}><FiPaperclip size={17}/><span>{busy?'Reading…':'Attach file'}</span></button>
- <button type="button" className="icon-button" disabled={disabled||busy} onClick={()=>setShowHost(v=>!v)}>Host file</button>
- {showHost&&<form className="host-attachment-form" onSubmit={fromHost}><MachinePicker machine={machine} onChange={setMachine}/><label>File path<input className="chat-input-field" value={hostPath} onChange={e=>setHostPath(e.target.value)} required placeholder="/path/to/file"/></label><button className="icon-button" disabled={busy||!hostPath.trim()} type="submit">Attach from host</button></form>}
+ <input ref={fileInput} type="file" hidden multiple onChange={e=>{if(e.target.files?.length)upload(e.target.files)}}/>
+ <button type="button" className="icon-button" disabled={disabled||busy} onClick={()=>fileInput.current?.click()}><FiPaperclip size={17}/><span>Upload files</span></button>
+ <button type="button" className="icon-button" disabled={disabled||busy} onClick={()=>setShowHost(v=>!v)}>Fetch from machine</button>
+ {busy&&<span role="status">{progress}</span>}{busy&&request.current&&<button type="button" className="icon-button" onClick={()=>request.current?.abort()}>Cancel upload</button>}
+ {showHost&&<form className="host-attachment-form" onSubmit={fromHost}><MachinePicker machine={machine} onChange={setMachine}/><label>File path<input className="chat-input-field" value={hostPath} onChange={e=>setHostPath(e.target.value)} required placeholder="Absolute path, home path, or selected host path"/></label><button className="icon-button" disabled={busy||!hostPath.trim()} type="submit">Fetch file</button><button className="icon-button" type="button" onClick={()=>setShowHost(false)}>Close</button></form>}
  {error&&<p role="alert">{error}</p>}
  </div>
 }
-export function downloadAttachment(attachment:ChatAttachment){if(!attachment.data_base64)return;const bytes=Uint8Array.from(atob(attachment.data_base64),c=>c.charCodeAt(0));const url=URL.createObjectURL(new Blob([bytes],{type:attachment.mime_type}));const a=document.createElement('a');a.href=url;a.download=attachment.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+export function downloadAttachment(file:ChatAttachment){if(!file.data_base64){const a=document.createElement('a');a.href=`${getHostUrl()}/api/v1/artifacts/${encodeURIComponent(file.id)}/content?download=1`;a.download=file.name;a.click();return;}const bytes=Uint8Array.from(atob(file.data_base64),c=>c.charCodeAt(0));const url=URL.createObjectURL(new Blob([bytes],{type:file.mime_type}));const a=document.createElement('a');a.href=url;a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}

@@ -17,10 +17,18 @@ pub fn ssh_target(machine: &str) -> Result<String, String> {
 }
 
 pub async fn operate(machine: Option<&str>, request: Value) -> Result<Value, String> {
+    operate_timeout(machine, request, 20).await
+}
+
+pub async fn operate_timeout(
+    machine: Option<&str>,
+    request: Value,
+    seconds: u64,
+) -> Result<Value, String> {
     let source = include_str!("host_probe.py");
     let mut cmd = if let Some(machine) = machine.filter(|s| !s.is_empty()) {
         let target = ssh_target(machine)?;
-        let mut c = Command::new("ssh");
+        let mut c = Command::new(std::env::var("RAIN_SSH_BINARY").unwrap_or_else(|_| "ssh".into()));
         let remote = format!("python3 -c {}", crate::terminal::quote(source));
         c.args([
             "-o",
@@ -45,7 +53,7 @@ pub async fn operate(machine: Option<&str>, request: Value) -> Result<Value, Str
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let bytes = serde_json::to_vec(&request).map_err(|e| e.to_string())?;
-    tokio::time::timeout(std::time::Duration::from_secs(20), async {
+    tokio::time::timeout(std::time::Duration::from_secs(seconds), async {
         let mut child = cmd
             .spawn()
             .map_err(|e| format!("Host operation needs Python 3 and SSH: {e}"))?;

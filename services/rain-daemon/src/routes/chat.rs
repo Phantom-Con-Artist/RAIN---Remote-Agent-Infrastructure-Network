@@ -241,6 +241,102 @@ pub(super) async fn handle(
             }
         }
 
+        (Method::POST, path)
+            if path.starts_with("/api/v1/conversations/") && path.ends_with("/native-terminal") =>
+        {
+            let id = path
+                .split('/')
+                .nth(4)
+                .and_then(|id| uuid::Uuid::parse_str(id).ok());
+            let result = match id {
+                Some(id) => state.chat.native_terminal(id).await,
+                None => Err("Invalid conversation UUID".into()),
+            };
+            Ok(match result {
+                Ok(c) => json_response(StatusCode::OK, &ApiResponse::ok(c)),
+                Err(e) => json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e)),
+            })
+        }
+        (Method::GET, path)
+            if path.starts_with("/api/v1/conversations/") && path.ends_with("/commands") =>
+        {
+            let id = path
+                .split('/')
+                .nth(4)
+                .and_then(|id| uuid::Uuid::parse_str(id).ok());
+            let result = match id {
+                Some(id) => state.chat.command_catalog(id).await,
+                None => Err("Invalid conversation UUID".into()),
+            };
+            Ok(match result {
+                Ok(c) => json_response(StatusCode::OK, &ApiResponse::ok(c)),
+                Err(e) => json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e)),
+            })
+        }
+
+        (Method::PATCH, path)
+            if path.starts_with("/api/v1/conversations/") && path.ends_with("/mode") =>
+        {
+            let id = path
+                .split('/')
+                .nth(4)
+                .and_then(|v| uuid::Uuid::parse_str(v).ok());
+            let body = req.into_body().collect().await?.to_bytes();
+            let result = match (
+                id,
+                serde_json::from_slice::<rain_protocol::ModeRequest>(&body),
+            ) {
+                (Some(id), Ok(settings)) => state.chat.set_mode(id, settings).await,
+                _ => Err("Invalid mode settings".into()),
+            };
+            Ok(match result {
+                Ok(c) => json_response(StatusCode::OK, &ApiResponse::ok(c)),
+                Err(e) => json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e)),
+            })
+        }
+        (Method::GET, path)
+            if path.starts_with("/api/v1/conversations/") && path.ends_with("/activity") =>
+        {
+            let result = match path
+                .split('/')
+                .nth(4)
+                .and_then(|v| uuid::Uuid::parse_str(v).ok())
+            {
+                Some(id) => state.chat.conversation_activity(id).await,
+                None => Err("Invalid conversation".into()),
+            };
+            Ok(match result {
+                Ok(c) => json_response(StatusCode::OK, &ApiResponse::ok(c)),
+                Err(e) => json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e)),
+            })
+        }
+        (Method::POST, path)
+            if path.starts_with("/api/v1/conversations/") && path.ends_with("/agent-control") =>
+        {
+            let id = path
+                .split('/')
+                .nth(4)
+                .and_then(|v| uuid::Uuid::parse_str(v).ok());
+            let body = req.into_body().collect().await?.to_bytes();
+            let data = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+            let agent = data["agent_id"]
+                .as_str()
+                .and_then(|v| uuid::Uuid::parse_str(v).ok());
+            let action = data["action"].as_str().unwrap_or("");
+            let result = match (id, agent, action) {
+                (Some(id), Some(agent), "interrupt" | "terminate") => {
+                    state
+                        .chat
+                        .control_member(id, agent, action == "terminate")
+                        .await
+                }
+                _ => Err("Invalid agent control".into()),
+            };
+            Ok(match result {
+                Ok(()) => json_response(StatusCode::OK, &ApiResponse::ok(())),
+                Err(e) => json_response(StatusCode::BAD_REQUEST, &ApiResponse::<()>::err(e)),
+            })
+        }
         (Method::GET, "/api/v1/sessions") => {
             let sessions = state.chat.list_sessions().await;
             Ok(json_response(StatusCode::OK, &ApiResponse::ok(sessions)))

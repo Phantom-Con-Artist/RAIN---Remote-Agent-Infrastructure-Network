@@ -39,7 +39,7 @@ export function AgentWorkbench({ sessions, onRefresh, onOpenChat, machine, onMac
     catch(e:any){setError(e.message)}
   }
   return <section className="agent-workbench" aria-label="Agent sessions">
-    <h2>Agent sessions</h2>
+    <h1>Agent sessions</h1>
     <p>Choose a machine, then launch an agent or open a terminal.</p>
     <MachinePicker machine={machine} onChange={onMachineChange} />
     <HostCatalog machine={machine} cwd={cwd} onLaunch={async (command,name,args,provider) => {

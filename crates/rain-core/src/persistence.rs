@@ -11,11 +11,20 @@ struct Snapshot {
     jobs: HashMap<uuid::Uuid, JobDelegation>,
     agents: Vec<AgentProcess>,
     #[serde(default)]
+    dispatches: Vec<rain_protocol::ChatDispatch>,
+    #[serde(default)]
+    traces: Vec<rain_protocol::AgentTrace>,
+    #[serde(default)]
     group_memories: HashMap<uuid::Uuid, rain_protocol::GroupMemory>,
 }
 impl ChatStore {
     pub async fn restore(supervisor: AgentSupervisor, path: &Path) -> Result<Self, String> {
-        let store = Self::with_supervisor(supervisor);
+        let mut store = Self::with_supervisor(supervisor);
+        if std::env::var("RAIN_ARTIFACT_DIR").is_err() {
+            store.artifacts = crate::artifacts::ArtifactStore::at(
+                path.parent().unwrap_or(Path::new(".")).join("artifacts"),
+            );
+        }
         match tokio::fs::read(path).await {
             Ok(bytes) => {
                 let snapshot: Snapshot = serde_json::from_slice(&bytes)
@@ -26,6 +35,15 @@ impl ChatStore {
                 *store.conversations.write().await = snapshot.conversations;
                 *store.messages.write().await = snapshot.messages;
                 *store.jobs.write().await = snapshot.jobs;
+                let mut dispatches = snapshot.dispatches;
+                for dispatch in &mut dispatches {
+                    if matches!(dispatch.status.as_str(), "queued" | "running") {
+                        dispatch.status = "interrupted".into();
+                        dispatch.finished_at = Some(chrono::Utc::now());
+                    }
+                }
+                *store.dispatches.write().await = dispatches;
+                *store.traces.write().await = snapshot.traces;
                 *store.group_memories.write().await = snapshot.group_memories;
                 for mut agent in snapshot.agents {
                     if matches!(agent.status, AgentStatus::Running | AgentStatus::Starting) {
@@ -53,6 +71,8 @@ impl ChatStore {
             conversations: conversations.clone(),
             messages: messages.clone(),
             jobs: jobs.clone(),
+            dispatches: self.dispatches.read().await.clone(),
+            traces: self.traces.read().await.clone(),
             group_memories: self.group_memories.read().await.clone(),
             agents: self.supervisor.list_agents().await,
         };

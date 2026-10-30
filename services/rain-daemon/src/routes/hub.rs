@@ -10,6 +10,12 @@ pub(super) async fn handle(
     req: Request<Incoming>,
     state: &AppState,
 ) -> Result<HttpResponse, hyper::Error> {
+    let authorization = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::to_owned);
     let method = req.method().clone();
     let path = req.uri().path().to_string();
 
@@ -24,8 +30,8 @@ pub(super) async fn handle(
             if path_str.starts_with("/api/v1/hub/devices/") && path_str.ends_with("/revoke") =>
         {
             let parts: Vec<&str> = path_str.split('/').collect();
-            if parts.len() == 6 {
-                let device_id = parts[4];
+            if parts.len() == 7 {
+                let device_id = parts[5];
                 let revoked = state.store.revoke_device(device_id).await;
                 Ok(json_response(StatusCode::OK, &ApiResponse::ok(revoked)))
             } else {
@@ -41,6 +47,13 @@ pub(super) async fn handle(
             let body_bytes = req.into_body().collect().await?.to_bytes();
             match serde_json::from_slice::<SpokeRegisterRequest>(&body_bytes) {
                 Ok(reg_req) => {
+                    if let Ok(key) = std::env::var("RAIN_CLUSTER_KEY") {
+                        if authorization.as_deref() != Some(key.as_str())
+                            && reg_req.pairing_code.is_none()
+                        {
+                            return Ok(json_response(StatusCode::UNAUTHORIZED,&ApiResponse::<()>::err("Node enrollment requires the cluster key or a valid pairing code")));
+                        }
+                    }
                     info!(
                         "Incoming spoke node registration: '{}' (ID: {})",
                         reg_req.device_name, reg_req.device_id
@@ -63,16 +76,36 @@ pub(super) async fn handle(
         (Method::POST, "/api/v1/hub/spokes/heartbeat") => {
             let body_bytes = req.into_body().collect().await?.to_bytes();
             match serde_json::from_slice::<SpokeHeartbeatRequest>(&body_bytes) {
-                Ok(hb_req) => match state.store.heartbeat_spoke(hb_req).await {
-                    Ok(_) => Ok(json_response(
-                        StatusCode::OK,
-                        &ApiResponse::ok("Heartbeat accepted"),
-                    )),
-                    Err(e) => Ok(json_response(
-                        StatusCode::NOT_FOUND,
-                        &ApiResponse::<()>::err(e),
-                    )),
-                },
+                Ok(hb_req) => {
+                    let device = match authorization.as_deref() {
+                        Some(token) => state.store.validate_token(token).await,
+                        None => None,
+                    };
+                    if !device
+                        .as_ref()
+                        .map(|d| d.device_id == hb_req.device_id)
+                        .unwrap_or(false)
+                    {
+                        return Ok(json_response(
+                            StatusCode::UNAUTHORIZED,
+                            &ApiResponse::<()>::err("Heartbeat requires this node's token"),
+                        ));
+                    }
+                    match state.store.heartbeat_spoke(hb_req).await {
+                        Ok(_) => Ok(json_response(
+                            StatusCode::OK,
+                            &ApiResponse::ok("Heartbeat accepted"),
+                        )),
+                        Err(e) => Ok(json_response(
+                            if e.starts_with("Spoke not found") {
+                                StatusCode::NOT_FOUND
+                            } else {
+                                StatusCode::BAD_REQUEST
+                            },
+                            &ApiResponse::<()>::err(e),
+                        )),
+                    }
+                }
                 Err(e) => Ok(json_response(
                     StatusCode::BAD_REQUEST,
                     &ApiResponse::<()>::err(format!("Invalid heartbeat payload: {}", e)),

@@ -11,6 +11,7 @@ import { FileEntry } from '../types';
 import { formatBytes } from '../api';
 
 interface FilesViewProps {
+  onInspectFile?: (file: FileEntry) => Promise<void>;
   onDirtyChange?: (dirty:boolean)=>void;
   currentPath: string;
   files: FileEntry[];
@@ -25,6 +26,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   files,
   onOpenDirectory,
   onReadFile,
+  onInspectFile,
   onWriteFile,
 }) => {
   const [editingFile, setEditingFile] = useState<{ path: string; name: string; content: string } | null>(null);
@@ -44,12 +46,12 @@ export const FilesView: React.FC<FilesViewProps> = ({
     } else if (entry.is_editable) {
       const res = await onReadFile(entry.path, entry.name);
       if (res.is_binary) {
-        alert('Binary files cannot be edited in the browser.');
+        await onInspectFile?.(entry);
         return;
       }
       setOriginal(res.content);
       setEditingFile({ path: entry.path, name: entry.name, content: res.content });
-    }
+    } else { await onInspectFile?.(entry); }
     } catch(e: any) { setError(e.message); }
   };
 
@@ -147,11 +149,12 @@ export const FilesView: React.FC<FilesViewProps> = ({
                 </span>
                 <span className="file-meta-sub">
                   {file.is_dir ? 'Directory' : formatBytes(file.size_bytes)}
-                  {file.is_editable ? ' • Tap to edit' : ''}
+                  {file.is_editable ? ' · Open editor' : !file.is_dir ? ' · Preview or download' : ''}
                 </span>
               </div>
             </div>
 
+            {!file.is_dir && <button className="icon-button" type="button" onClick={e=>{e.stopPropagation();onInspectFile?.(file)}}>Inspect</button>}
             {file.is_editable && (
               <span
                 style={{

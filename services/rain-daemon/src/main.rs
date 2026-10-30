@@ -1,3 +1,4 @@
+mod artifact_body;
 mod portal;
 mod response;
 mod routes;
@@ -21,16 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
 
     println!(
-        r#"
-  ██████╗  █████╗ ██╗███╗   ██╗
-  ██╔══██╗██╔══██╗██║████╗  ██║
-  ██████╔╝███████║██║██╔██╗ ██║
-  ██╔══██╗██╔══██║██║██║╚██╗██║
-  ██║  ██║██║  ██║██║██║ ╚████║
-  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝
-  Remote Agent Infrastructure Network — Host Daemon v{}
-  Messenger & Agent Orchestration Server
-    "#,
+        "{}\n  Server v{}\n",
+        rain_core::branding::BANNER,
         env!("CARGO_PKG_VERSION")
     );
 
@@ -61,10 +54,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
 
         info!("Starting RAIN Daemon in Spoke Agent Mode");
-        return run_spoke_agent(&hub_url, &spoke_name, pairing_code).await;
+        return run_spoke_agent(&hub_url, &spoke_name, pairing_code, None, None).await;
     }
 
-    let store = Arc::new(InMemoryStore::new());
+    let state_path = std::path::PathBuf::from(
+        std::env::var("RAIN_STATE_PATH").unwrap_or_else(|_| ".rain/state.json".into()),
+    );
+    let runtime = state_path.parent().unwrap_or(std::path::Path::new(".rain"));
+    tokio::fs::create_dir_all(runtime).await?;
+    if std::env::var("RAIN_NODE_ID").is_err() {
+        let path = runtime.join("node-id");
+        let id = match tokio::fs::read_to_string(&path).await {
+            Ok(id) => id.trim().to_string(),
+            Err(_) => {
+                let id = format!("hub-{}", uuid::Uuid::new_v4());
+                tokio::fs::write(path, &id).await?;
+                id
+            }
+        };
+        std::env::set_var("RAIN_NODE_ID", id);
+    }
+    let store = Arc::new(
+        InMemoryStore::restore_network(&runtime.join("network.json"))
+            .await
+            .map_err(std::io::Error::other)?,
+    );
     let remote = Arc::new(RemoteManager::new_with_store((*store).clone()));
 
     let supervisor = Arc::new(AgentSupervisor::new());
@@ -83,10 +97,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         loop {
             match events.recv().await {
                 Ok(event) => {
-                    chat_events.record_event(event).await;
-                    if let Err(e) = chat_events.persist(&event_path).await {
-                        error!("History write failed: {}", e);
+                    let chat = chat_events.clone();
+                    let path = event_path.clone();
+                    // Preserve native metadata order without serializing file work across channels.
+                    if matches!(
+                        &event,
+                        rain_protocol::AgentEvent::TurnActivity { .. }
+                            | rain_protocol::AgentEvent::Trace { .. }
+                            | rain_protocol::AgentEvent::ActivityChanged { .. }
+                    ) {
+                        chat.record_event(event).await;
+                        if let Err(e) = chat.persist(&path).await {
+                            error!("History write failed: {}", e);
+                        }
+                        continue;
                     }
+                    tokio::spawn(async move {
+                        chat.record_event(event).await;
+                        if let Err(e) = chat.persist(&path).await {
+                            error!("History write failed: {}", e);
+                        }
+                    });
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     tracing::warn!("Missed {} agent events", n)
@@ -117,11 +148,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         state.registry.list_capabilities().len()
     );
 
+    let parent = std::env::var("RAIN_PARENT_HUB").ok().or_else(|| {
+        args.windows(2)
+            .find(|w| w[0] == "--parent-hub")
+            .map(|w| w[1].clone())
+    });
+    if let Some(parent) = parent {
+        let store = state.store.clone();
+        let supervisor = state.supervisor.clone();
+        let name = std::env::var("RAIN_NODE_NAME").unwrap_or_else(|_| {
+            sysinfo::System::host_name().unwrap_or_else(|| "RAIN subhub".into())
+        });
+        tokio::spawn(async move {
+            if let Err(error) =
+                run_spoke_agent(&parent, &name, None, Some(store), Some(supervisor)).await
+            {
+                error!("Parent connection stopped: {}", error);
+            }
+        });
+    }
+    let shutdown = async {
+        #[cfg(unix)]
+        {
+            let mut terminate =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("SIGTERM handler");
+            tokio::select! {_=terminate.recv()=>(),_=tokio::signal::ctrl_c()=>()}
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+    };
+    tokio::pin!(shutdown);
     loop {
-        let (stream, remote_addr) = listener.accept().await?;
+        let accepted =
+            tokio::select! {connection=listener.accept()=>connection,_=&mut shutdown=>break};
+        let (stream, remote_addr) = accepted?;
         let io = TokioIo::new(stream);
         let state_clone = state.clone();
-
         tokio::spawn(async move {
             let service = service_fn(move |req| handle_request(req, state_clone.clone()));
             if let Err(err) = http1::Builder::new().serve_connection(io, service).await {
@@ -129,4 +194,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         });
     }
+    info!("Stopping agent processes and saving state");
+    let mut stopping = tokio::task::JoinSet::new();
+    for agent in state.supervisor.list_agents().await {
+        if agent.status == rain_protocol::AgentStatus::Running {
+            let supervisor = state.supervisor.clone();
+            stopping.spawn(async move {
+                let _ = supervisor.stop_agent(agent.id).await;
+            });
+        }
+    }
+    while stopping.join_next().await.is_some() {}
+    state
+        .chat
+        .persist(&state.history_path)
+        .await
+        .map_err(std::io::Error::other)?;
+    state
+        .store
+        .persist_network()
+        .await
+        .map_err(std::io::Error::other)?;
+    Ok(())
 }

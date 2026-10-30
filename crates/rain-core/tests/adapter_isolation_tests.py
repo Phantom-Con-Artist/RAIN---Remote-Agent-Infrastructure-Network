@@ -43,5 +43,32 @@ class AdapterIsolationTests(unittest.TestCase):
                     self.assertEqual(replies[1]['text'], replies[3]['text'])
                     self.assertNotEqual(replies[0]['text'], replies[1]['text'])
 
+    def test_human_direction_interrupts_autonomous_turn_and_drops_stale_queue(self):
+        import time
+        with tempfile.TemporaryDirectory(prefix='rain-priority-') as folder:
+            root = Path(folder)
+            cli = root/'provider'
+            cli.write_text("#!/usr/bin/env python3\nimport sys,json,time,os\nprompt=sys.argv[sys.argv.index('--print')+1]\nif prompt=='slow-agent':\n open(os.environ['STARTED'],'w').write('yes')\n time.sleep(20)\nprint(json.dumps({'status':'SUCCESS','response':prompt}))\n")
+            cli.chmod(0o700)
+            bridge = subprocess.Popen(['python3',str(ADAPTER),'agy_chat',str(cli)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env={**os.environ,'STARTED':str(root/'started')})
+            def send(text,origin,run):
+                bridge.stdin.write(json.dumps({'conversation_id':'channel','text':text,'origin':origin,'run_id':run})+'\n')
+                bridge.stdin.flush()
+            try:
+                send('slow-agent','agent','old')
+                deadline=time.monotonic()+5
+                while not (root/'started').exists():
+                    self.assertLess(time.monotonic(),deadline)
+                    time.sleep(.02)
+                send('queued-old-agent','agent','old')
+                send('urgent-human','human','new')
+                bridge.stdin.close();bridge.stdin=None
+                output,errors=bridge.communicate(timeout=6)
+                replies=[json.loads(line) for line in output.splitlines() if json.loads(line)['rain_chat']=='reply']
+                self.assertEqual([(r['text'],r.get('run_id')) for r in replies],[('urgent-human','new')],errors)
+            finally:
+                if bridge.poll() is None:
+                    bridge.terminate();bridge.wait(timeout=5)
+
 if __name__ == '__main__':
     unittest.main()

@@ -8,9 +8,9 @@ async fn adapters_route_group_and_direct_replies_without_crosstalk() {
     let root = std::env::temp_dir().join(format!("rain-adapter-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&root).unwrap();
     let agy = root.join("agy");
-    std::fs::write(&agy,"#!/usr/bin/env python3\nimport sys,json\nprompt=sys.argv[sys.argv.index('--print')+1]\nprint(json.dumps({'conversation_id':'test-thread','status':'SUCCESS','response':'AGY: '+prompt}))\n").unwrap();
+    std::fs::write(&agy,"#!/usr/bin/env python3\nimport sys,json\nprompt=sys.argv[sys.argv.index('--print')+1]\nprint(json.dumps({'conversation_id':'test-thread','status':'SUCCESS','response':('<rain-silent/>' if 'New channel post from' in prompt else 'AGY: '+prompt)}))\n").unwrap();
     let muse = root.join("muse");
-    std::fs::write(&muse,"#!/usr/bin/env python3\nimport sys,json\nprompt=open(sys.argv[sys.argv.index('--prompt-file')+1]).read()\nprint(json.dumps({'payload_type':'run.terminal.completed','payload':{'terminal':'completed','text':'MUSE: '+prompt}}))\n").unwrap();
+    std::fs::write(&muse,"#!/usr/bin/env python3\nimport sys,json\nprompt=open(sys.argv[sys.argv.index('--prompt-file')+1]).read()\nprint(json.dumps({'payload_type':'run.terminal.completed','payload':{'terminal':'completed','text':('<rain-silent/>' if 'New channel post from' in prompt else 'MUSE: '+prompt)}}))\n").unwrap();
     for p in [&agy, &muse] {
         std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700)).unwrap()
     }

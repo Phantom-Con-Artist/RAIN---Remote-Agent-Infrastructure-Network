@@ -1,12 +1,8 @@
+import {HomePage} from './components/HomePage';
+import {GuidePage} from './components/GuidePage';
 import { FilesWorkspace } from './components/FilesWorkspace';
 import { AgentWorkbench } from './components/AgentWorkbench';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  FiMessageSquare,
-  FiServer,
-  FiFolder,
-  FiShare2,
-} from 'react-icons/fi';
 import {
   TabType,
   ThemeMode,
@@ -25,13 +21,14 @@ import { Header } from './components/Header';
 import { ChatsView } from './components/ChatsView';
 import { MachinesView } from './components/MachinesView';
 import { MeshView } from './components/MeshView';
+import {NetworkWorkspace} from './components/NetworkWorkspace';
 import { PairingModal } from './components/PairingModal';
 import { NewGroupModal } from './components/NewGroupModal';
 
 export const App: React.FC = () => {
   // Theme state
   const [theme, setTheme] = useState<ThemeMode>(() => {
-    return (localStorage.getItem('rain_theme') as ThemeMode) || 'dark';
+    return (localStorage.getItem('rain_theme') as ThemeMode) || 'light';
   });
 
   useEffect(() => {
@@ -47,7 +44,10 @@ export const App: React.FC = () => {
   const [fileDirty, setFileDirty] = useState(false);
   const changeMachine = (machine:string) => {if(!fileDirty||window.confirm('Discard unsaved file changes before switching machines?'))setSelectedMachine(machine);};
   const [selectedMachine, setSelectedMachine] = useState('');
-  const [currentTab, setCurrentTab] = useState<TabType>('chats');
+  const routeTab=():TabType=>{const route=location.hash.slice(1).split('/')[0];return ({network:'mesh',chats:'chats',machines:'machines',files:'files',guide:'guide',home:'home'} as Record<string,TabType>)[route]||'home'};
+  const [currentTab, setCurrentTabState] = useState<TabType>(routeTab);
+  const setCurrentTab=(tab:TabType)=>{const hash=tab==='mesh'?'network/topology':tab;if(location.hash!==`#${hash}`)location.hash=hash;setCurrentTabState(tab)};
+  useEffect(()=>{const listener=()=>setCurrentTabState(routeTab());window.addEventListener('hashchange',listener);return()=>window.removeEventListener('hashchange',listener)},[]);
 
   // Connection & Telemetry
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'offline' | 'connecting'>('connecting');
@@ -405,7 +405,8 @@ export const App: React.FC = () => {
     <div className="app-container">
       {/* 1. Header Bar */}
       <Header
-        title={{chats: 'Conversations', machines: 'Machines & sessions', files: 'Files', mesh: 'Connections'}[currentTab]}
+        currentTab={currentTab} onNavigate={setCurrentTab}
+        title={{home:'Home',guide:'Guide',chats: 'Conversations', machines: 'Machines & sessions', files: 'Files', mesh: 'Network & dataflow'}[currentTab]}
         theme={theme}
         onToggleTheme={toggleTheme}
         connectionStatus={connectionStatus}
@@ -415,7 +416,10 @@ export const App: React.FC = () => {
       />
 
       {/* 2. Main Content Screens */}
-      <main className="app-main">
+      <main className={`app-main page-${currentTab}`} id="main-content" tabIndex={-1}>
+        {currentTab==='home'&&<HomePage sessions={sessions} conversations={conversations} onNavigate={setCurrentTab} onOpenConversation={id=>{handleSelectConversation(id);setCurrentTab('chats')}} connectionStatus={connectionStatus}/>}
+        {currentTab==='guide'&&<GuidePage onNavigate={setCurrentTab}/>}
+
         {currentTab === 'chats' && (
           <ChatsView
             conversations={conversations}
@@ -450,7 +454,7 @@ export const App: React.FC = () => {
         <div hidden={currentTab!=='files'} className="file-view-wrapper"><FilesWorkspace machine={selectedMachine} onMachineChange={changeMachine} onDirtyChange={setFileDirty}/></div>
 
         {currentTab === 'mesh' && (
-          <MeshView
+          <NetworkWorkspace onOpenConversation={id=>{if(conversations.some(c=>c.id===id)){handleSelectConversation(id);setCurrentTab('chats');}else{showToast('This conversation is archived. Its history is available in member direct chats.');}}} connections={<MeshView
             topology={topology}
             meshStatus={meshStatus}
             latencyMs={latencyMs}
@@ -461,53 +465,9 @@ export const App: React.FC = () => {
               loadConversations();
               loadTopology();
             }}
-          />
+          />} />
         )}
       </main>
-
-      {/* 3. Bottom Navigation Bar */}
-      <nav className="bottom-nav">
-        <button
-          className={`nav-tab-button ${currentTab === 'chats' ? 'active' : ''}`}
-          onClick={() => setCurrentTab('chats')}
-        >
-          <FiMessageSquare className="nav-tab-icon" />
-          <span>Messages</span>
-        </button>
-
-        <button
-          className={`nav-tab-button ${currentTab === 'machines' ? 'active' : ''}`}
-          onClick={() => {
-            setCurrentTab('machines');
-            loadMachines();
-          }}
-        >
-          <FiServer className="nav-tab-icon" />
-          <span>Machines</span>
-        </button>
-
-        <button
-          className={`nav-tab-button ${currentTab === 'files' ? 'active' : ''}`}
-          onClick={() => {
-            setCurrentTab('files');
-          }}
-        >
-          <FiFolder className="nav-tab-icon" />
-          <span>Files</span>
-        </button>
-
-        <button
-          className={`nav-tab-button ${currentTab === 'mesh' ? 'active' : ''}`}
-          onClick={() => {
-            setCurrentTab('mesh');
-            loadTopology();
-            loadMeshStatus();
-          }}
-        >
-          <FiShare2 className="nav-tab-icon" />
-          <span>Network</span>
-        </button>
-      </nav>
 
       {/* 4. Global Modals */}
       <PairingModal

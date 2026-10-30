@@ -163,8 +163,12 @@ impl AgentSupervisor {
             let mut lock = self.agents.write().await;
             let base = initial_process.name.clone();
             let mut suffix = 2;
-            while lock.values().any(|agent| agent.name.eq_ignore_ascii_case(&initial_process.name)) {
-                initial_process.name = format!("{}-{}", base, suffix); suffix += 1;
+            while lock
+                .values()
+                .any(|agent| agent.name.eq_ignore_ascii_case(&initial_process.name))
+            {
+                initial_process.name = format!("{}-{}", base, suffix);
+                suffix += 1;
             }
             lock.insert(id, initial_process.clone());
         }
@@ -251,7 +255,16 @@ impl AgentSupervisor {
                                 match event.get("rain_chat").and_then(|v| v.as_str()) {
                                     Some("reply") => {
                                         if let (Some(conversation), Some(text)) = (event.get("conversation_id").and_then(|v| v.as_str()).and_then(|v| uuid::Uuid::parse_str(v).ok()), event.get("text").and_then(|v| v.as_str())) {
-                                            let _ = tx.send(AgentEvent::ChatReply {agent_id:id,conversation_id:conversation,text:text.into()});
+                                            let run_id=event.get("run_id").and_then(|v|v.as_str()).and_then(|v|uuid::Uuid::parse_str(v).ok());
+                                            let _ = tx.send(AgentEvent::ChatReplyScoped {agent_id:id,conversation_id:conversation,run_id,text:text.into()});
+                                        }
+                                    },
+                                    Some("trace") => {
+                                        if let (Some(dispatch_id),Some(step))=(event["dispatch_id"].as_str().and_then(|v|uuid::Uuid::parse_str(v).ok()),event["step"].as_str()) {let _=tx.send(AgentEvent::Trace{agent_id:id,dispatch_id,step:step.chars().take(500).collect()});}
+                                    },
+                                    Some("turn") => {
+                                        if let (Some(dispatch_id),Some(state))=(event["dispatch_id"].as_str().and_then(|v|uuid::Uuid::parse_str(v).ok()),event["state"].as_str()){
+                                            let _=tx.send(AgentEvent::TurnActivity{agent_id:id,dispatch_id,state:state.into(),error:event["error"].as_str().map(str::to_owned)});
                                         }
                                     },
                                     Some("activity") => {
@@ -353,13 +366,88 @@ impl AgentSupervisor {
         text: &str,
         conversation: uuid::Uuid,
     ) -> Result<(), String> {
+        self.send_context_input(id, text, conversation, None, true)
+            .await
+    }
+
+    pub async fn send_context_input(
+        &self,
+        id: uuid::Uuid,
+        text: &str,
+        conversation: uuid::Uuid,
+        run_id: Option<uuid::Uuid>,
+        human: bool,
+    ) -> Result<(), String> {
+        self.send_tracked_input(
+            id,
+            text,
+            conversation,
+            run_id,
+            human,
+            uuid::Uuid::new_v4(),
+            None,
+        )
+        .await
+    }
+    pub async fn send_tracked_input(
+        &self,
+        id: uuid::Uuid,
+        text: &str,
+        conversation: uuid::Uuid,
+        run_id: Option<uuid::Uuid>,
+        human: bool,
+        dispatch_id: uuid::Uuid,
+        options: Option<rain_protocol::NativeChatSettings>,
+    ) -> Result<(), String> {
         let agent = self.get_agent(id).await.ok_or("Session not found")?;
         if agent.provider.ends_with("_chat") {
-            let frame = serde_json::json!({"text":text,"conversation_id":conversation});
+            let frame = serde_json::json!({"text":text,"conversation_id":conversation,"run_id":run_id,"dispatch_id":dispatch_id,"options":options.unwrap_or_default(),"origin":if human {"human"}else{"agent"}});
             self.send_raw(id, &format!("{}\n", frame)).await
         } else {
             self.send_input(id, text).await
         }
+    }
+
+    pub async fn interrupt_autonomy(
+        &self,
+        id: uuid::Uuid,
+        conversation: uuid::Uuid,
+    ) -> Result<(), String> {
+        if self
+            .get_agent(id)
+            .await
+            .map(|a| a.provider.ends_with("_chat"))
+            .unwrap_or(false)
+        {
+            self.send_raw(
+                id,
+                &format!(
+                    "{}\n",
+                    serde_json::json!({"control":"cancel_auto","conversation_id":conversation})
+                ),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    pub async fn cancel_chat_conversation(
+        &self,
+        id: uuid::Uuid,
+        conversation: uuid::Uuid,
+    ) -> Result<(), String> {
+        let agent = self.get_agent(id).await.ok_or("Session not found")?;
+        if agent.provider.ends_with("_chat") {
+            self.send_raw(
+                id,
+                &format!(
+                    "{}\n",
+                    serde_json::json!({"control":"cancel","conversation_id":conversation})
+                ),
+            )
+            .await?;
+        }
+        Ok(())
     }
 
     pub async fn send_raw(&self, id: uuid::Uuid, input: &str) -> Result<(), String> {
