@@ -1,5 +1,7 @@
 mod access;
+mod admin;
 mod artifact_body;
+mod cloud;
 mod portal;
 mod response;
 mod routes;
@@ -133,6 +135,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     });
     let state = AppState {
+        admin: Arc::new(
+            admin::Admin::restore(runtime.join("admin.key"))
+                .await
+                .map_err(std::io::Error::other)?,
+        ),
+        cloud: Arc::new(
+            cloud::Cloud::restore(runtime.join("cloud.json"))
+                .await
+                .map_err(std::io::Error::other)?,
+        ),
         history_path,
         registry: Arc::new(CapabilityRegistry::new()),
         supervisor,
@@ -140,6 +152,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         chat,
         remote,
     };
+
+    let leases = state.cloud.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(5));
+        loop {
+            tick.tick().await;
+            if let Err(error) = leases.expire().await {
+                error!("Cloud lease persistence failed: {}", error);
+            }
+        }
+    });
 
     let port = std::env::var("RAIN_PORT")
         .ok()

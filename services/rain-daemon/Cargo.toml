@@ -22,3 +22,5 @@ reqwest = { version = "0.13", features = ["json"] }
 sysinfo = "0.38"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+sha2 = "0.10"

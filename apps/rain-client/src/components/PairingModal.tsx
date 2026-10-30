@@ -144,7 +144,7 @@ export const PairingModal: React.FC<PairingModalProps> = ({
                     alignItems: 'center',
                     justifyContent: 'center'
                   }}
-                  dangerouslySetInnerHTML={{ __html: ticket.qr_svg }}
+                  children={<img src={'data:image/svg+xml,'+encodeURIComponent(ticket.qr_svg)} alt="Legacy pairing QR code"/>}
                 />
               ) : (
                 <div style={{ padding: 24, color: 'var(--text-muted)' }}>Generating QR ticket...</div>

@@ -31,6 +31,8 @@ pub(crate) fn json_response<T: serde::Serialize>(
     let mut res = Response::builder()
         .status(status)
         .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+        .header("cache-control", "no-store")
+        .header("x-content-type-options", "nosniff")
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"))
         .header(
             ACCESS_CONTROL_ALLOW_METHODS,
@@ -38,7 +40,9 @@ pub(crate) fn json_response<T: serde::Serialize>(
         )
         .header(
             ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static("Content-Type, Authorization, X-Rain-Device-Token, Range, If-Range"),
+            HeaderValue::from_static(
+                "Content-Type, Authorization, X-Rain-Device-Token, Range, If-Range",
+            ),
         )
         .body(full_body(json_bytes))
         .unwrap();
@@ -58,7 +62,9 @@ pub(crate) fn cors_preflight(
         )
         .header(
             ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static("Content-Type, Authorization, X-Rain-Device-Token, Range, If-Range"),
+            HeaderValue::from_static(
+                "Content-Type, Authorization, X-Rain-Device-Token, Range, If-Range",
+            ),
         )
         .body(empty_body())
         .unwrap()
@@ -70,6 +76,11 @@ pub(crate) fn html_response(
 ) -> Response<UnsyncBoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>> {
     Response::builder()
         .status(status)
+        .header("cache-control", "no-store")
+        .header("x-content-type-options", "nosniff")
+        .header("x-frame-options", "DENY")
+        .header("referrer-policy", "no-referrer")
+        .header("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; font-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
         .header(
             CONTENT_TYPE,
             HeaderValue::from_static("text/html; charset=utf-8"),

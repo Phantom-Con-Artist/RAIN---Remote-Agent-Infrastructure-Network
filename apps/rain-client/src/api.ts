@@ -13,7 +13,7 @@ function getDefaultHostUrl(): string {
   const origin = window.location.origin;
   const webPage = /^https?:/.test(origin);
   // A remotely served workspace always talks to its own authenticated gateway.
-  if (webPage && !['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) return origin;
+  if (webPage) return origin;
   const saved = localStorage.getItem('rain_host_url');
   if (saved) { try { return normalizeHostUrl(saved); } catch { localStorage.removeItem('rain_host_url'); } }
   return webPage ? origin : 'http://localhost:7890';
@@ -58,10 +58,10 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
   }
 
   try {
-    const res = await fetch(url, { ...options, headers, signal: options.signal || AbortSignal.timeout(25000) });
+    const res = await fetch(url, { ...options, headers, redirect: 'error', signal: options.signal || AbortSignal.timeout(25000) });
     const latencyMs = Math.round(performance.now() - start);
     if (base !== hostUrl) throw new Error('Hub changed. Refresh before continuing.');
-    if (res.status === 401) throw new Error('Sign in to your private hub in the browser, then retry.');
+    if (res.status === 401) { window.dispatchEvent(new Event('rain-admin-required')); throw new Error('Your admin session expired. Sign in with the admin key.'); }
     if (res.status === 403) throw new Error('Access denied. Check your private connection and hub access settings.');
     if (!res.headers.get('content-type')?.includes('application/json')) throw new Error('This address did not return a RAIN response. Open the hub address and check its sign-in page.');
     const json = await res.json();

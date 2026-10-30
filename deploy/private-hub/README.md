@@ -1,62 +1,32 @@
-# Self-hosted private hub
+# Private gateway deployment
 
-The owner's machine is the authoritative server: it holds state, runs agents,
-serves the client, and routes work. Phones and browsers are remote controls;
-they never enroll as workers or take over hub duties. An unavailable hub means
-unavailable remote control, not automatic promotion of a phone. Back up the
-hub's state and artifact directories; arbitrary running processes do not fail over.
+Read [Personal cloud](../../docs/personal-cloud.md) first. The adjacent Caddyfile
+terminates HTTPS and forwards only to the hub's loopback listener. RAIN itself
+checks the sysadmin session or scoped worker/agent/machine-owner credential.
+There is no shared gateway password that gives workers administrator access.
 
-Transport is independent of RAIN. Use owner-operated WireGuard, with either a
-reachable UDP port on the hub or an owner-operated VPS routing VPN peers to it.
-No third-party coordination or relay service is required. A CGNAT-only setup
-without a reachable peer cannot provide reliable unsolicited internet access.
+Set `RAIN_GATEWAY_TOKEN` to the same generated random value in the gateway and
+hub service environments, plus `RAIN_PRIVATE_HOST`, `RAIN_VPN_ADDRESS` and
+`RAIN_ALLOWED_ORIGINS`. Caddy overwrites the internal gateway header. Never
+provide that internal secret to workers or agents. Bind the gateway to the
+owner-operated VPN address; do not expose the daemon's TCP port publicly.
 
-1. Configure WireGuard on the hub and phone. Give each device its own key and
-   restrict routes and firewall rules to the hub's VPN address. Do not enable
-   peer-to-peer forwarding for phones. With a VPS, allow phone-to-hub forwarding
-   only, and use persistent keepalive for the hub behind NAT. The owner controls
-   keys, revocation, IP assignments and firewall policy.
-2. Build with `rain initialize`; start with `rain-server start`. RAIN binds only
-   `127.0.0.1`; never forward its TCP port from a router or public proxy.
-3. Install Caddy on that same hub. Set `RAIN_PRIVATE_HOST` to the private DNS name,
-   `RAIN_VPN_ADDRESS` to the hub's WireGuard address, `RAIN_OWNER_USER`, and
-   `RAIN_OWNER_PASSWORD_HASH` (generated with `caddy hash-password`). Generate a
-   random gateway secret with `openssl rand -hex 32`; supply it as
-   `RAIN_GATEWAY_TOKEN` to both Caddy and rain-server before starting them.
-   Set `RAIN_ALLOWED_ORIGINS=https://your-private-host` on rain-server.
-   Keep secrets in owner-readable service environment files, never in URLs.
-4. Run Caddy with the adjacent Caddyfile. Its internal CA needs explicit trust
-   on each client; install its root certificate through the platform's supported
-   trust workflow. Alternatively configure your own trusted TLS certificate.
-5. Connect the phone's VPN, open `https://your-private-host`, and authenticate.
-   On a desktop use `rain-client start --hub https://your-private-host`.
-   The gateway overwrites its secret header after authentication. Browsers never
-   receive that secret. A RAIN device pairing token does not bypass the gateway.
+`rain cloud-setup --local --directory /new/private/directory --caddy /path/to/caddy`
+generates private per-device WireGuard profiles and QR, an admin key, Caddy
+configuration and a launcher. An internet endpoint can be supplied with
+`--endpoint YOUR-HUB:51820`. Generated configuration does not activate VPNs,
+modify router/firewall policy or install certificate trust. The default HTTPS
+port is 8443. The private CA certificate appears under the generated
+`gateway-data/caddy/pki/authorities/local/root.crt` after startup.
 
-The gateway grants its authenticated owner full hub control, including process
-execution and file access. This is a single-owner boundary, not multi-user RBAC.
-The hub OS and its local processes are trusted. Do not place an untrusted local
-user or unauthenticated proxy inside that boundary.
+Admin keys and infrastructure identities persist in the runtime directory.
+Remote login is performed in the RAIN UI. Email/SMS delivery is not configured.
+Public sign-in assets contain no infrastructure records; every privileged API
+requires authentication. Gateway admin access and automatic HTTP redirects are
+disabled; automatic root trust installation is disabled.
 
-Validation on the owner's deployment is required: VPN disconnected must fail;
-VPN connected with wrong credentials must fail; correct credentials must work;
-revoked VPN peers must fail; the public interface must not accept TCP 7890 or
-443. Restrict the WireGuard UDP listener to its intended interface/port. Do not
-expose Caddy's admin API. Existing SSH execution hosts remain optional legacy
-workers; SSH is not part of this client connection path.
-
-A phone switching Wi-Fi/cellular reconnects through WireGuard to the same hub.
-The hub retains work and history independently of the client. Network retry is
-not a guarantee of exactly-once mutation: refresh state before repeating a launch
-whose response was lost. Hub outage recovery uses restart and persisted state;
-this configuration does not implement redundant hubs or automatic failover.
-
-Product direction: direct phone-to-owner-hub access is the default. The VPS
-variant above is optional and must never be provisioned silently. The current
-configuration is a deployment foundation, not a completed automatic setup wizard.
-Automatic reachability checks, router configuration guidance and phone enrollment
-still need implementation before setup can be described as effortless.
-
-References: [WireGuard quick start](https://www.wireguard.com/quickstart/),
-[Caddy reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy),
-[Caddy authentication](https://caddyserver.com/docs/caddyfile/directives/basic_auth).
+Validate on the actual deployment: without VPN the service must be unreachable;
+with VPN but without the admin key the admin API must reject access; approved
+worker tokens must reach only worker endpoints; revoked tokens must fail. Test
+on cellular separately. WAN/CGNAT behavior and physical-device trust cannot be
+established by local HTTPS tests.

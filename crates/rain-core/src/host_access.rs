@@ -1,19 +1,11 @@
-//! Host operations use the same SSH allowlist and host-key policy as agent execution.
+//! Local sysadmin operations. Remote operations are routed through RAIN workers.
 use serde_json::Value;
-use std::{collections::HashMap, process::Stdio};
+use std::process::Stdio;
 use tokio::{io::AsyncWriteExt, process::Command};
 
-pub fn ssh_target(machine: &str) -> Result<String, String> {
-    let hosts: HashMap<String, String> =
-        serde_json::from_str(&std::env::var("RAIN_SSH_HOSTS").unwrap_or_else(|_| "{}".into()))
-            .map_err(|e| e.to_string())?;
-    let target = hosts
-        .get(machine)
-        .ok_or("Machine is not configured in RAIN_SSH_HOSTS")?;
-    if target.is_empty() || target.starts_with('-') || target.contains('\0') {
-        return Err("Invalid SSH target".into());
-    }
-    Ok(target.clone())
+/// SSH execution has been retired. Remote work uses the authenticated cloud worker API.
+pub fn ssh_target(_machine: &str) -> Result<String, String> {
+    Err("SSH transport is disabled. Enroll a RAIN network worker and use the Cloud task/file controls.".into())
 }
 
 pub async fn operate(machine: Option<&str>, request: Value) -> Result<Value, String> {

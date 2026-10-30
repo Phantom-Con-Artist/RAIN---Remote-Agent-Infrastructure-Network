@@ -1,6 +1,8 @@
+mod admin;
 mod artifacts;
 mod auth;
 mod chat;
+mod cloud;
 mod hub;
 mod jobs;
 mod network;
@@ -58,6 +60,35 @@ pub(crate) async fn handle_request(
         ));
     }
     let path = req.uri().path().to_string();
+    let scoped = path.starts_with("/api/v1/cloud/worker/")
+        || path.starts_with("/api/v1/cloud/agent/")
+        || path.starts_with("/api/v1/cloud/owner/");
+    if path.starts_with("/api/v1/admin/") {
+        let action = format!("{} {}", req.method(), path);
+        let record = req.method() != Method::GET;
+        let response = admin::handle(req, &state).await?;
+        if record {
+            if let Err(e) = state
+                .admin
+                .audit(&action, response.status().as_u16(), "sysadmin-login")
+                .await
+            {
+                tracing::error!("Access record failed: {}", e);
+            }
+        }
+        return Ok(response);
+    }
+    if path.starts_with("/api/")
+        && path != "/api/v1/health"
+        && !scoped
+        && !state.admin.authenticated(req.headers()).await
+    {
+        return Ok(crate::response::json_response(
+            StatusCode::UNAUTHORIZED,
+            &rain_protocol::ApiResponse::<()>::err("Admin key authentication required"),
+        ));
+    }
+
     let mutating = (path.starts_with("/api/v1/conversations")
         || path.starts_with("/api/v1/agents/")
         || path.starts_with("/api/v1/jobs"))
@@ -65,7 +96,25 @@ pub(crate) async fn handle_request(
         && req.method() != Method::HEAD
         && req.method() != Method::OPTIONS;
     let network_mutation = path.starts_with("/api/v1/hub/") && req.method() != Method::GET;
+    let audit_action = format!("{} {}", req.method(), path);
+    let record = req.method() != Method::GET && req.method() != Method::OPTIONS;
     let response = dispatch(req, state.clone()).await?;
+    if record
+        && !(response.status().is_success()
+            && (path == "/api/v1/cloud/worker/poll" || path.ends_with("/renew")))
+    {
+        if let Err(e) = state
+            .admin
+            .audit(
+                &audit_action,
+                response.status().as_u16(),
+                if scoped { "scoped-device" } else { "sysadmin" },
+            )
+            .await
+        {
+            tracing::error!("Access record failed: {}", e);
+        }
+    }
     if network_mutation {
         if let Err(e) = state.store.persist_network().await {
             return Ok(crate::response::json_response(
@@ -92,9 +141,28 @@ async fn dispatch(req: Request<Incoming>, state: AppState) -> Result<HttpRespons
         return Ok(cors_preflight());
     }
 
+    if (req.headers().contains_key("x-rain-worker-token")
+        || req.headers().contains_key("x-rain-agent-token")
+        || req.headers().contains_key("x-rain-owner-key"))
+        && !path.starts_with("/api/v1/cloud/worker/")
+        && !path.starts_with("/api/v1/cloud/agent/")
+        && !path.starts_with("/api/v1/cloud/owner/")
+    {
+        return Ok(crate::response::json_response(
+            StatusCode::FORBIDDEN,
+            &rain_protocol::ApiResponse::<()>::err(
+                "Worker credentials cannot access owner endpoints",
+            ),
+        ));
+    }
+    if path == "/api/v1/cloud" || path.starts_with("/api/v1/cloud/") {
+        return cloud::handle(req, &state).await;
+    }
     // 1. Root / UI / Static Assets
     if (method == Method::GET || method == Method::HEAD) && (path == "/" || path == "/index.html") {
-        let dist_index = std::path::Path::new("apps/rain-client/dist/index.html");
+        let dist_dir =
+            std::env::var("RAIN_CLIENT_DIST").unwrap_or_else(|_| "apps/rain-client/dist".into());
+        let dist_index = std::path::Path::new(&dist_dir).join("index.html");
         if dist_index.exists() {
             if let Ok(content) = std::fs::read_to_string(dist_index) {
                 return Ok(html_response(StatusCode::OK, content));
@@ -104,8 +172,9 @@ async fn dispatch(req: Request<Incoming>, state: AppState) -> Result<HttpRespons
     }
 
     if (method == Method::GET || method == Method::HEAD) && path.starts_with("/assets/") {
-        let asset_path =
-            std::path::Path::new("apps/rain-client/dist").join(path.trim_start_matches('/'));
+        let dist_dir =
+            std::env::var("RAIN_CLIENT_DIST").unwrap_or_else(|_| "apps/rain-client/dist".into());
+        let asset_path = std::path::Path::new(&dist_dir).join(path.trim_start_matches('/'));
         if !path
             .split('/')
             .any(|segment| segment == ".." || segment == ".")

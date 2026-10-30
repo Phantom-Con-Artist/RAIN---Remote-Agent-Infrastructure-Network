@@ -82,12 +82,7 @@ pub(super) async fn handle(
             }
         }
         (Method::GET, "/api/v1/agents/machines") => {
-            let hosts: std::collections::HashMap<String, String> = serde_json::from_str(
-                &std::env::var("RAIN_SSH_HOSTS").unwrap_or_else(|_| "{}".into()),
-            )
-            .unwrap_or_default();
-            let mut aliases: Vec<_> = hosts.keys().cloned().collect();
-            aliases.sort();
+            let aliases: Vec<String> = vec![]; // Remote machines are enrolled in Cloud, never SSH aliases.
             Ok(json_response(StatusCode::OK, &ApiResponse::ok(aliases)))
         }
         (Method::DELETE, path) if path.starts_with("/api/v1/agents/") => {

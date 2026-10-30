@@ -39,12 +39,34 @@ pub(super) async fn handle(
                     .iter()
                     .filter(|a| a.status == rain_protocol::AgentStatus::Running)
                     .count(),
-                children: state.store.network_children().await,
+                children: state.cloud.snapshot().await["workers"]
+                    .as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .map(|w| NetworkNode {
+                        id: w["id"].as_str().unwrap_or_default().into(),
+                        name: w["name"].as_str().unwrap_or("Worker").into(),
+                        role: "worker".into(),
+                        parent_id: Some(rain_core::network::local_node_id()),
+                        endpoint: None,
+                        online: w["online"].as_bool().unwrap_or(false),
+                        revoked: w["revoked"].as_bool().unwrap_or(false),
+                        last_seen: chrono::DateTime::from_timestamp(
+                            w["last_seen"].as_i64().unwrap_or(0),
+                            0,
+                        )
+                        .unwrap_or_default(),
+                        cpu_cores: w["resources"]["cpu_cores"].as_u64().unwrap_or(0) as usize,
+                        ram_total_bytes: w["resources"]["ram_total_bytes"].as_u64().unwrap_or(0),
+                        ram_available_bytes: w["resources"]["ram_available_bytes"]
+                            .as_u64()
+                            .unwrap_or(0),
+                        active_agents: 0,
+                        children: vec![],
+                    })
+                    .collect(),
             };
-            let hosts: HashMap<String, String> = serde_json::from_str(
-                &std::env::var("RAIN_SSH_HOSTS").unwrap_or_else(|_| "{}".into()),
-            )
-            .unwrap_or_default();
+            let hosts: HashMap<String, String> = HashMap::new();
             let health_path = state.chat.artifacts.root().join("host-health.json");
             let health: serde_json::Value = tokio::fs::read(health_path)
                 .await
@@ -62,15 +84,12 @@ pub(super) async fn handle(
             Ok(json_response(
                 StatusCode::OK,
                 &ApiResponse::ok(
-                    json!({"model":"star_mesh_hybrid","control_plane":"hierarchical_hubs","data_plane":"peer_ssh_with_verified_hub_fallback","root":root,"parent_path":state.store.parent_path.read().await.clone(),"parent_link":{"url":std::env::var("RAIN_PARENT_HUB").ok(),"last_seen":*state.store.parent_last_seen.read().await,"online":state.store.parent_last_seen.read().await.map(|t|(chrono::Utc::now()-t).num_seconds()<60).unwrap_or(false)},"execution_hosts":configured,"transfers":transfers,"message_flows":state.chat.list_dispatches().await,"heartbeat_timeout_seconds":60}),
+                    json!({"model":"private_hub_workers","control_plane":"authenticated_hub_broker","data_plane":"outbound_https_workers","root":root,"parent_path":state.store.parent_path.read().await.clone(),"parent_link":{"url":std::env::var("RAIN_PARENT_HUB").ok(),"last_seen":*state.store.parent_last_seen.read().await,"online":state.store.parent_last_seen.read().await.map(|t|(chrono::Utc::now()-t).num_seconds()<60).unwrap_or(false)},"execution_hosts":configured,"transfers":transfers,"message_flows":state.chat.list_dispatches().await,"heartbeat_timeout_seconds":60}),
                 ),
             ))
         }
         (&Method::POST, "/api/v1/network/probe") => {
-            let hosts: HashMap<String, String> = serde_json::from_str(
-                &std::env::var("RAIN_SSH_HOSTS").unwrap_or_else(|_| "{}".into()),
-            )
-            .unwrap_or_default();
+            let hosts: HashMap<String, String> = HashMap::new();
             let mut tasks = tokio::task::JoinSet::new();
             for alias in hosts.into_keys() {
                 tasks.spawn(async move{let value=match rain_core::host_access::operate(Some(&alias),json!({"action":"resources"})).await{Ok(resources)=>json!({"status":"online","checked_at":chrono::Utc::now(),"resources":resources}),Err(e)=>json!({"status":"unreachable","checked_at":chrono::Utc::now(),"error":e})};(alias,value)});

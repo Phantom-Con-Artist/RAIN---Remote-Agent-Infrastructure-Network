@@ -16,7 +16,7 @@ import {
   PairingTicket,
   ChatAttachment
 } from './types';
-import { apiRequest, setAuthToken } from './api';
+import { apiRequest, setAuthToken, getHostUrl } from './api';
 import { Header } from './components/Header';
 import { ChatsView } from './components/ChatsView';
 import { MachinesView } from './components/MachinesView';
@@ -46,7 +46,7 @@ export const App: React.FC = () => {
   const [selectedMachine, setSelectedMachine] = useState('');
   const routeTab=():TabType=>{const route=location.hash.slice(1).split('/')[0];return ({network:'mesh',chats:'chats',machines:'machines',files:'files',guide:'guide',home:'home'} as Record<string,TabType>)[route]||'home'};
   const [currentTab, setCurrentTabState] = useState<TabType>(routeTab);
-  const setCurrentTab=(tab:TabType)=>{const hash=tab==='mesh'?'network/topology':tab;if(location.hash!==`#${hash}`)location.hash=hash;setCurrentTabState(tab)};
+  const setCurrentTab=(tab:TabType)=>{const hash=tab==='mesh'?'network/cloud':tab;if(location.hash!==`#${hash}`)location.hash=hash;setCurrentTabState(tab)};
   useEffect(()=>{const listener=()=>setCurrentTabState(routeTab());window.addEventListener('hashchange',listener);return()=>window.removeEventListener('hashchange',listener)},[]);
 
   // Connection & Telemetry
@@ -467,7 +467,7 @@ export const App: React.FC = () => {
             onRefreshTopology={loadTopology}
             onHostUrlChanged={() => {
               // Reload clears every hub-specific view, selection and pending request.
-              window.location.reload();
+              if(getHostUrl()!==window.location.origin)window.location.assign(getHostUrl()+'/#network/connections');else window.location.reload();
             }}
           />} />
         )}

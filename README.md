@@ -2,14 +2,14 @@
 
 RAIN is a self-hosted messenger and workbench for AI coding agents running on your own computers. Its purpose is to bring agent sessions, group conversations, remote files, and terminals into one interface, so you can coordinate work without moving between machines and terminals.
 
-The machines provide execution environments. Your installed CLIs provide the AI integrations and use their existing accounts. RAIN provides the conversation, routing, file-transfer, and remote-control layer.
+The hub owns authentication, permissions, records and routing. Phones are remote clients. Approved network workers provide execution environments. Your installed CLIs provide the AI integrations and use their existing accounts. RAIN provides the conversation, routing, file-transfer, and remote-control layer.
 
 ## Quick start
 
 ```sh
 ./install.sh
-rain initialize
-rain-server start
+rain initialize --name 'My cloud'
+rain-server start --share --allow-program python3
 rain-client start --hub http://127.0.0.1:7890
 ```
 
@@ -22,13 +22,13 @@ Channels support casual, goal and evidence modes, parallel agent replies, option
 | Capability | Current implementation |
 | --- | --- |
 | Direct and group chat | Messenger-style conversations, agent contacts, recipient selection, delivery states, and provider activity. |
-| Agent discovery | Scan the local host or configured SSH machines for executable CLIs. Recognized tools have launch controls; other executables are searchable. |
+| Agent discovery | Scan the hub or approved network workers for executable CLIs. Recognized tools have launch controls; other executables are searchable. |
 | Structured chat adapters | Agy, Muse, Codex, and Claude Code adapters return assistant text instead of terminal redraws. Agy and Muse were exercised together with real model replies. |
 | Coworker groups | Agents self-organize through shared goals, discussions, plans, targeted or broadcast handoffs, verified files, and human-input pauses. Open channels default to continuous autonomy, with optional reply limits. |
 | Independent sessions | Removing a group deletes its conversation/workflow routing and leaves agents running. Stopped sessions can be removed separately. |
 | Interactive terminals | Unix PTYs and xterm.js support native CLI interfaces, keyboard input, paste, terminal controls, and resizing. |
 | File sharing | Upload a file or attach one from a selected host. RAIN copies contents to each recipient host and verifies size and SHA-256 before dispatch. Reference-based snapshots stream without the former 5 MB inline limit; media previews use platform capabilities. |
-| Remote explorer | Browse, read, and edit files on local or configured SSH hosts; launch a terminal in the displayed directory. |
+| Remote explorer | Browse, read, and edit files on the hub or approved shared folders on network workers; launch a terminal in the displayed directory. |
 | Persistence | Atomic JSON snapshots retain conversations, messages, workflow records, and session metadata. Restarted processes are marked stopped rather than silently relaunched. |
 | Interface | Reference-driven mobile-first Home/Guide, local Poppins fonts, the supplied RAIN logo, collapsible navigation, and light/dark themes. |
 
@@ -108,3 +108,5 @@ The implementation uses Rust/Tokio, Hyper, React/TypeScript, Tauri, xterm.js, Py
 Copyright 2026 Subhradeep Sarkar. Licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE).
 
 Private internet access uses a user-owned hub and remote-only clients. See [self-hosted WireGuard and HTTPS gateway](deploy/private-hub/README.md). `rain-client` never starts or stops a server. Remote client URLs require HTTPS.
+
+The current [personal cloud workflow](docs/personal-cloud.md) adds key-based sysadmin login, an interactive network canvas, scoped agents, protected groups and temporary read-only guest inspection. SSH execution is disabled. See the deployment and validation notes before testing internet access.

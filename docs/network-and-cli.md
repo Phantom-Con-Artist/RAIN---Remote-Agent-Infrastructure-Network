@@ -1,38 +1,41 @@
-# Running and monitoring RAIN
+# RAIN network and CLI
 
-From the checkout:
+See [Personal cloud](personal-cloud.md) for current setup, authentication,
+resource sharing, files, groups, guest access and failure behavior.
 
 ```sh
-./install.sh
-rain initialize
-rain-server start
+rain initialize --name 'My cloud'
+rain-server start --share --allow-program python3
 rain-client start --hub http://127.0.0.1:7890
-```
-
-The installer links `rain`, `rain-server`, and `rain-client` into `~/.local/bin` (or `--prefix /your/bin`). It refuses to overwrite other commands. Keep the checkout at its installed location and ensure the target bin directory is on PATH. `initialize` builds the backend and browser client. Lifecycle commands track only their own processes, including process identity to guard against PID reuse. An unrelated daemon is never replaced.
-
-```sh
-rain-server status
-rain-server logs
-rain-server restart
-rain-server stop
-rain-client start --hub http://127.0.0.1:7890 --no-open
+rain-server admin-key --show
 rain network --watch
 rain flow --watch
-rain network --json --url http://127.0.0.1:7890
+rain-server status
+rain-server logs
+rain-server stop
 ```
 
-Default state lives in `.rain`; `RAIN_HOME=/path` isolates another runtime. Start a subhub with its own port/state and a reachable parent:
+The server owns state and execution. `rain-client` opens an existing hub and
+never starts or stops a server. Remote browser clients use the hub's HTTPS
+address. HTTP is permitted only on loopback. Cloud workers use outbound
+HTTPS, scoped credentials and leases; SSH execution is disabled. Legacy
+spoke/subhub endpoints are not the personal-cloud worker enrollment path.
+
+Install links with `./install.sh`; keep the checkout in that location. Default
+state lives in `.rain`; `RAIN_HOME=/path` selects an explicit runtime. Named
+infrastructure profiles preserve identities and keys. Lifecycle commands track
+their own process identities and refuse to replace another hub using the port.
+
+Core verification entry points:
 
 ```sh
-RAIN_HOME=/path/subhub rain-server start --port 7891 --parent http://parent:7890 --name Studio
-RAIN_HOME=/path/worker rain-server spoke --hub http://subhub:7891 --name Worker
+python3 scripts/verify-infrastructure.py
+python3 scripts/verify-cloud.py
+python3 scripts/verify-private-gateway.py
+python3 scripts/verify-private-https.py
+node scripts/verify-cloud-ui.mjs
+node scripts/verify-admin-ui.mjs
 ```
 
-For another subhub beneath Studio, use Studio's URL as its `--parent`. Set `RAIN_CLUSTER_KEY` consistently for unattended enrollment, or use the pairing flow. Heartbeats require the enrolled node's bearer token. Stable IDs and enrollment state persist across restarts. The parent learns recursive child topology; cycle/duplicate identities are rejected. Stale ancestors make descendant resources unavailable. Revoked nodes remain inspectable but cannot re-enroll under that identity. Reconnect uses bounded exponential backoff.
-
-**Network → Topology** drills into any registered hub and its descendants, with live status, CPU/RAM and optional endpoint. **Dataflow** shows message dispatches and verified file transfers, including errors, direct/fallback routes and retry controls. **Connections** retains pairing and execution-host setup. Probes report actual configured SSH availability. Unknown GPU/speed values remain unknown.
-
-The topology combines a hierarchical star control plane with peer file transfer. It is not distributed consensus or transparent migration of arbitrary running work. A child hub keeps its own service while its parent is unavailable and reconnects afterward; the parent excludes stale resources. Physical SSH network behavior requires testing on configured hosts. Keep the existing authenticated tunnel/access arrangement for remote access; new routes do not introduce a separate internet-facing security boundary.
-
-Private internet access uses a user-owned hub and remote-only clients. See [self-hosted WireGuard and HTTPS gateway](../deploy/private-hub/README.md). `rain-client` never starts or stops a server. Remote client URLs require HTTPS.
+Browser tests require Playwright and a disposable review hub; HTTPS checks also
+require Caddy. See [validation notes](private-hub-validation.md).

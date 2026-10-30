@@ -4,8 +4,8 @@ use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::{Method, Request, StatusCode};
 use rain_protocol::{
-    ApiResponse, EmailOtpRequest, EmailOtpVerifyRequest, PairingConfirmRequest,
-    PairingConfirmResponse, PairingInitRequest, SessionStatusResponse,
+    ApiResponse, PairingConfirmRequest, PairingConfirmResponse, PairingInitRequest,
+    SessionStatusResponse,
 };
 use tracing::info;
 
@@ -16,6 +16,14 @@ pub(super) async fn handle(
     let method = req.method().clone();
     let path = req.uri().path().to_string();
 
+    if path.starts_with("/api/v1/auth/otp/") {
+        return Ok(json_response(
+            StatusCode::NOT_IMPLEMENTED,
+            &ApiResponse::<()>::err(
+                "Email/SMS authentication is not configured. Use the infrastructure admin key.",
+            ),
+        ));
+    }
     match (method, path.as_str()) {
         // --- AUTH & PAIRING ---
         (Method::POST, "/api/v1/auth/pair/init") => {
@@ -31,8 +39,8 @@ pub(super) async fn handle(
                         )
                         .await;
                     info!(
-                        "Initiated pairing for client '{}'. Code: {}",
-                        init_req.client_device_name, res.pairing_code
+                        "Initiated legacy pairing for client '{}'",
+                        init_req.client_device_name
                     );
                     Ok(json_response(StatusCode::OK, &ApiResponse::ok(res)))
                 }
@@ -50,10 +58,7 @@ pub(super) async fn handle(
                 .store
                 .generate_pairing_ticket(&host_name, "0.0.0.0:7890")
                 .await;
-            info!(
-                "Generated pairing ticket with PIN: {} for Hub '{}'",
-                ticket.pairing_code, host_name
-            );
+            info!("Generated legacy pairing ticket for Hub '{}'", host_name);
             Ok(json_response(StatusCode::OK, &ApiResponse::ok(ticket)))
         }
 
@@ -93,47 +98,15 @@ pub(super) async fn handle(
             }
         }
 
-        (Method::POST, "/api/v1/auth/otp/email/request") => {
-            let body_bytes = req.into_body().collect().await?.to_bytes();
-            match serde_json::from_slice::<EmailOtpRequest>(&body_bytes) {
-                Ok(otp_req) => {
-                    let code = state.store.request_email_otp(otp_req).await;
-                    info!("Email OTP generated for invitation: [CODE: {}]", code);
-                    Ok(json_response(
-                        StatusCode::OK,
-                        &ApiResponse::ok(format!("Verification OTP sent. Test Code: {}", code)),
-                    ))
-                }
-                Err(e) => Ok(json_response(
-                    StatusCode::BAD_REQUEST,
-                    &ApiResponse::<()>::err(format!("Invalid request: {}", e)),
-                )),
-            }
-        }
-
-        (Method::POST, "/api/v1/auth/otp/email/verify") => {
-            let body_bytes = req.into_body().collect().await?.to_bytes();
-            match serde_json::from_slice::<EmailOtpVerifyRequest>(&body_bytes) {
-                Ok(verify_req) => match state.store.verify_email_otp(verify_req).await {
-                    Ok(resp) => Ok(json_response(StatusCode::OK, &ApiResponse::ok(resp))),
-                    Err(e) => Ok(json_response(
-                        StatusCode::UNAUTHORIZED,
-                        &ApiResponse::<()>::err(e),
-                    )),
-                },
-                Err(e) => Ok(json_response(
-                    StatusCode::BAD_REQUEST,
-                    &ApiResponse::<()>::err(format!("Invalid request: {}", e)),
-                )),
-            }
-        }
-
         (Method::GET, "/api/v1/auth/session") => {
             let auth_header = req
                 .headers()
                 .get("Authorization")
                 .and_then(|h| h.to_str().ok());
-            let token = req.headers().get("x-rain-device-token").and_then(|h| h.to_str().ok())
+            let token = req
+                .headers()
+                .get("x-rain-device-token")
+                .and_then(|h| h.to_str().ok())
                 .or_else(|| auth_header.and_then(|h| h.strip_prefix("Bearer ")));
             let host_name =
                 std::env::var("HOSTNAME").unwrap_or_else(|_| "RAIN-Primary-Hub".to_string());

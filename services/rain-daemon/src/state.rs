@@ -3,6 +3,8 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
+    pub(crate) admin: Arc<crate::admin::Admin>,
+    pub(crate) cloud: Arc<crate::cloud::Cloud>,
     pub(crate) history_path: std::path::PathBuf,
     pub(crate) registry: Arc<CapabilityRegistry>,
     pub(crate) supervisor: Arc<AgentSupervisor>,
