@@ -55,6 +55,7 @@ export interface Conversation {
 }
 
 export interface AgentSession {
+  model?: string;
   interactive?: boolean;
   id: string;
   name: string;

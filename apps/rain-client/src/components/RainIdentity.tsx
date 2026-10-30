@@ -1,2 +1,2 @@
 import logo from '../assets/rain-logo.png';
-export function RainIdentity(){return <span className="rain-identity"><img className="rain-logo-image" src={logo} alt=""/><span className="rain-type-wordmark">rain<span className="rain-wordmark-dot">.</span></span><span className="sr-only">RAIN</span></span>}
+export function RainIdentity() { return <span className="rain-identity inline-flex items-center gap-2"><img className="rain-logo-image h-7 w-7 object-contain" src={logo} alt=""/><span className="rain-type-wordmark text-2xl font-medium tracking-tight">rain<span className="rain-wordmark-dot text-status-working">.</span></span><span className="sr-only">RAIN</span></span>; }

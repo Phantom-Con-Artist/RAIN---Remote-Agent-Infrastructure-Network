@@ -1,18 +1,88 @@
-/* Ordered style modules; keep cascade order unchanged. */
-@import "./styles/tokens.css";
-@import "./styles/base.css";
-@import "./styles/layout.css";
-@import "./styles/chats.css";
-@import "./styles/machines.css";
-@import "./styles/files.css";
-@import "./styles/mesh.css";
-@import "./styles/overlays.css";
-@import "./styles/responsive.css";
-@import "./styles/agents.css";
+@import "tailwindcss";
+@source "./**/*.{ts,tsx}";
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
-@import "./styles/workbench.css";
-@import "./styles/terminal.css";
-@import "./styles/messenger.css";
+@font-face { font-family: Poppins; src: url('./assets/fonts/Poppins-Regular.ttf') format('truetype'); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: Poppins; src: url('./assets/fonts/Poppins-Medium.ttf') format('truetype'); font-style: normal; font-weight: 500; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('./assets/fonts/JetBrainsMono.ttf') format('truetype'); font-style: normal; font-weight: 100 800; font-display: swap; }
 
-@import "./styles/network.css";
-@import "./styles/studio.css";
+/* One theme owns every surface; light/dark do not redefine component styles. */
+:root, [data-theme='dark'] {
+  color-scheme: dark;
+  --rain-base: #080a0f; --rain-surface: #0f141c; --rain-elevated: #17202e; --rain-hover: #1e293b;
+  --rain-ink: #f1f5f9; --rain-secondary: #cbd5e1; --rain-muted: #94a3b8;
+  --rain-human: #005c4b; --rain-human-ink: #ffffff;
+  --rain-agent: #182232; --rain-agent-ink: #f1f5f9;
+  --rain-chisel: rgba(148,163,184,.12); --rain-border: rgba(148,163,184,.22); --rain-glow: rgba(56,189,248,.35);
+  --rain-agent-border: rgba(148,163,184,.15); --rain-sudo: rgba(245,158,11,.08); --rain-sudo-border: rgba(245,158,11,.35);
+  --rain-online: #10b981; --rain-working: #06b6d4; --rain-warning: #f59e0b; --rain-danger: #ef4444; --rain-offline: #64748b;
+}
+[data-theme='light'] {
+  color-scheme: light;
+  --rain-base: #f8fafc; --rain-surface: #ffffff; --rain-elevated: #f1f5f9; --rain-hover: #e2e8f0;
+  --rain-ink: #0f172a; --rain-secondary: #334155; --rain-muted: #475569;
+  --rain-human: #059669; --rain-human-ink: #ffffff; --rain-agent: #ffffff; --rain-agent-ink: #0f172a;
+}
+@theme inline {
+  --color-canvas-base: var(--rain-base); --color-canvas-surface: var(--rain-surface); --color-canvas-elevated: var(--rain-elevated); --color-canvas-hover: var(--rain-hover);
+  --color-ink: var(--rain-ink); --color-ink-secondary: var(--rain-secondary); --color-ink-muted: var(--rain-muted);
+  --color-border-chisel: var(--rain-chisel); --color-border-subtle: var(--rain-border); --color-border-glow: var(--rain-glow);
+  --color-status-online: var(--rain-online); --color-status-working: var(--rain-working); --color-status-warning: var(--rain-warning); --color-status-danger: var(--rain-danger); --color-status-muted: var(--rain-offline);
+  --color-bubble-human: var(--rain-human); --color-bubble-human-ink: var(--rain-human-ink); --color-bubble-agent: var(--rain-agent); --color-bubble-agent-ink: var(--rain-agent-ink); --color-bubble-agent-border: var(--rain-agent-border);
+  --color-bubble-sudo: var(--rain-sudo); --color-bubble-sudo-border: var(--rain-sudo-border);
+  --font-sans: Poppins, Inter, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  --animate-conduit: conduit-pulse 1.2s linear infinite;
+  --animate-beacon: beacon-pulse 2s ease-out infinite;
+  --animate-agent: agent-thinking 1.2s ease-in-out infinite;
+  @keyframes conduit-pulse { to { stroke-dashoffset: -36; } }
+  @keyframes beacon-pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.3); } 80%,100% { box-shadow: 0 0 0 8px transparent; } }
+  @keyframes agent-thinking { 0%,80%,100% { transform: translateY(0); opacity:.45; } 40% { transform: translateY(-3px); opacity:1; } }
+}
+/* Compatibility aliases are confined to this token layer for data-driven SVG/xterm APIs. */
+:root {
+  --font-sans:Poppins, Inter, sans-serif; --font-mono:'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  --bg-canvas:var(--rain-base); --bg-surface:var(--rain-surface); --bg-subtle:var(--rain-elevated); --bg-elevated:var(--rain-elevated); --bg-hover:var(--rain-hover); --bg-active:var(--rain-hover);
+  --text-primary:var(--rain-ink); --text-secondary:var(--rain-secondary); --text-muted:var(--rain-muted);
+  --border-default:var(--rain-border); --border-subtle:var(--rain-chisel); --border-strong:var(--rain-glow);
+  --accent-primary:var(--rain-working); --accent-hover:var(--rain-online); --accent-text:var(--rain-ink); --accent-subtle:var(--rain-elevated); --primary-ink:#ffffff;
+  --success-text:var(--rain-online); --success-surface:rgba(16,185,129,.1); --success-border:rgba(16,185,129,.3);
+  --warning-text:var(--rain-warning); --warning-surface:var(--rain-sudo); --warning-border:var(--rain-sudo-border);
+  --danger-text:var(--rain-danger); --danger-surface:rgba(239,68,68,.08); --danger-border:rgba(239,68,68,.35); --danger-btn:var(--rain-danger);
+  --bubble-human-bg:var(--rain-human); --bubble-human-text:var(--rain-human-ink); --bubble-human-border:transparent;
+  --bubble-agent-bg:var(--rain-agent); --bubble-agent-text:var(--rain-agent-ink); --bubble-agent-border:var(--rain-agent-border);
+  --bubble-system-bg:var(--rain-sudo); --bubble-system-text:var(--rain-ink); --bubble-system-border:var(--rain-sudo-border);
+  --header-height:64px; --bottom-nav-height:0px; --radius-sm:8px; --radius-md:16px; --transition-fast:150ms ease-out;
+}
+@layer base {
+  * { box-sizing: border-box; }
+  html { @apply h-full bg-canvas-base text-ink antialiased; font-feature-settings:'cv02','cv03','cv04','cv11'; scrollbar-gutter:stable; }
+  body { @apply m-0 min-h-dvh font-sans text-sm; background-image:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(56,189,248,.08),transparent),radial-gradient(rgba(148,163,184,.07) 1px,transparent 1px);background-size:100% 100%,24px 24px; }
+  #root { @apply min-h-dvh; }
+  h1,h2,h3,h4 { @apply font-medium tracking-[-.03em] text-ink; }
+  h1 { @apply text-2xl leading-tight; } h2 { @apply text-xl; } h3 { @apply text-base; } h4 { @apply text-sm; }
+  p { @apply leading-7 text-ink-secondary; }
+  button, a, input, textarea, select, summary { -webkit-tap-highlight-color:transparent; }
+  button, [role=button], summary { @apply cursor-pointer; }
+  button { @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150; }
+  button:disabled { @apply cursor-not-allowed opacity-45; }
+  button:not(:disabled):hover { @apply bg-canvas-hover; }
+  input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea, select { @apply min-h-11 min-w-0 rounded-lg border border-border-subtle bg-canvas-base px-3 py-2 text-base text-ink placeholder:text-ink-muted; }
+  input[type=checkbox],input[type=radio] { @apply h-5 w-5 accent-status-online; }
+  label { @apply text-sm text-ink-secondary; }
+  a { @apply text-inherit underline-offset-4; }
+  a:hover { @apply underline; }
+  summary { @apply min-h-11 py-3 text-sm text-ink; }
+  code,pre,kbd { @apply font-mono text-[.85em] tabular-nums; }
+  pre { @apply overflow-auto rounded-lg border border-border-chisel bg-canvas-base p-4 text-ink-secondary; }
+  table { @apply w-full border-collapse text-left text-sm; }
+  th { @apply whitespace-nowrap border-b border-border-subtle bg-canvas-elevated/50 px-4 py-3 font-mono text-xs font-medium tracking-wide text-ink-muted; }
+  td { @apply border-b border-border-chisel px-4 py-4 align-top text-ink; }
+  small { @apply text-xs leading-5 text-ink-muted; }
+  :focus-visible { @apply outline-2 outline-offset-4 outline-status-working; }
+  ::selection { background:rgba(6,182,212,.3);color:var(--rain-ink); }
+  ::-webkit-scrollbar { width:8px;height:8px; } ::-webkit-scrollbar-thumb { background:var(--rain-hover);border-radius:8px; } ::-webkit-scrollbar-track { background:transparent; }
+  [hidden] { display:none!important; }
+}
+@utility glass-panel { @apply border border-border-subtle bg-canvas-surface/85 backdrop-blur-md; }
+@utility telemetry-label { @apply font-mono text-xs uppercase tracking-wider tabular-nums; }

@@ -1,10 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(),tailwindcss()],
   clearScreen: false,
   server: {
     port: 5173,
@@ -23,6 +24,7 @@ export default defineConfig({
   },
   build: {
     target: "esnext",
+    rollupOptions: { output: { manualChunks: { react: ["react", "react-dom"], qrcode: ["qrcode"] } } },
     minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_DEBUG,
   },
