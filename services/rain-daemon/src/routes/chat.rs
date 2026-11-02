@@ -4,7 +4,8 @@ use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::{Method, Request, StatusCode};
 use rain_protocol::{
-    ApiResponse, CreateConversationRequest, DirectChatRequest, SendMessageRequest,
+    ApiResponse, ConversationExportFormat, CreateConversationRequest, DirectChatRequest,
+    SendMessageRequest,
 };
 
 pub(super) async fn handle(
@@ -19,6 +20,109 @@ pub(super) async fn handle(
         (Method::GET, "/api/v1/conversations") => {
             let convs = state.chat.list_conversations().await;
             Ok(json_response(StatusCode::OK, &ApiResponse::ok(convs)))
+        }
+
+        (Method::GET, "/api/v1/conversations/search") => {
+            let q = super::get_query_param(req.uri().query(), "q").unwrap_or_default();
+            let sender = super::get_query_param(req.uri().query(), "sender");
+            let limit = super::get_query_param(req.uri().query(), "limit")
+                .and_then(|l| l.parse::<usize>().ok());
+            let results = state
+                .chat
+                .search_messages(None, &q, sender.as_deref(), limit)
+                .await;
+            Ok(json_response(StatusCode::OK, &ApiResponse::ok(results)))
+        }
+
+        (Method::GET, path_str)
+            if path_str.starts_with("/api/v1/conversations/")
+                && path_str.ends_with("/search") =>
+        {
+            let parts: Vec<&str> = path_str.split('/').collect();
+            if parts.len() == 6 {
+                if let Ok(conv_id) = uuid::Uuid::parse_str(parts[4]) {
+                    let q = super::get_query_param(req.uri().query(), "q").unwrap_or_default();
+                    let sender = super::get_query_param(req.uri().query(), "sender");
+                    let limit = super::get_query_param(req.uri().query(), "limit")
+                        .and_then(|l| l.parse::<usize>().ok());
+                    let results = state
+                        .chat
+                        .search_messages(Some(conv_id), &q, sender.as_deref(), limit)
+                        .await;
+                    Ok(json_response(StatusCode::OK, &ApiResponse::ok(results)))
+                } else {
+                    Ok(json_response(
+                        StatusCode::BAD_REQUEST,
+                        &ApiResponse::<()>::err("Invalid conversation UUID"),
+                    ))
+                }
+            } else {
+                Ok(json_response(
+                    StatusCode::NOT_FOUND,
+                    &ApiResponse::<()>::err("Endpoint not found"),
+                ))
+            }
+        }
+
+        (Method::GET, path_str)
+            if path_str.starts_with("/api/v1/conversations/")
+                && path_str.ends_with("/export") =>
+        {
+            let parts: Vec<&str> = path_str.split('/').collect();
+            if parts.len() == 6 {
+                if let Ok(conv_id) = uuid::Uuid::parse_str(parts[4]) {
+                    let format_param = super::get_query_param(req.uri().query(), "format")
+                        .unwrap_or_else(|| "markdown".into());
+                    let raw = super::get_query_param(req.uri().query(), "raw")
+                        .map(|v| v == "true" || v == "1")
+                        .unwrap_or(false);
+                    let format = match format_param.to_lowercase().as_str() {
+                        "json" => ConversationExportFormat::Json,
+                        "plaintext" | "txt" | "text" => ConversationExportFormat::PlainText,
+                        _ => ConversationExportFormat::Markdown,
+                    };
+                    match state.chat.export_transcript(conv_id, format).await {
+                        Ok(export) => {
+                            if raw {
+                                let (mime, ext) = match format {
+                                    ConversationExportFormat::Json => ("application/json", "json"),
+                                    ConversationExportFormat::PlainText => ("text/plain", "txt"),
+                                    ConversationExportFormat::Markdown => ("text/markdown", "md"),
+                                };
+                                let filename = format!("rain-transcript-{}.{}", conv_id, ext);
+                                let res = hyper::Response::builder()
+                                    .status(StatusCode::OK)
+                                    .header("Content-Type", mime)
+                                    .header(
+                                        "Content-Disposition",
+                                        format!("attachment; filename=\"{}\"", filename),
+                                    )
+                                    .header("Cache-Control", "no-store")
+                                    .header("Access-Control-Allow-Origin", "*")
+                                    .body(crate::response::full_body(export.content))
+                                    .unwrap();
+                                Ok(res)
+                            } else {
+                                Ok(json_response(StatusCode::OK, &ApiResponse::ok(export)))
+                            }
+                        }
+                        Err(e) => Ok(json_response(
+                            StatusCode::NOT_FOUND,
+                            &ApiResponse::<()>::err(e),
+                        )),
+                    }
+                } else {
+                    Ok(json_response(
+                        StatusCode::BAD_REQUEST,
+                        &ApiResponse::<()>::err("Invalid conversation UUID"),
+                    ))
+                }
+            } else {
+                Ok(json_response(
+                    StatusCode::NOT_FOUND,
+                    &ApiResponse::<()>::err("Endpoint not found"),
+                ))
+            }
         }
 
         (Method::POST, "/api/v1/conversations/create") => {

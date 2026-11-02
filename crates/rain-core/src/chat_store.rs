@@ -1,6 +1,7 @@
 use rain_protocol::{
-    AgentSession, ChatAttachment, ChatMessage, Conversation, JobDelegation, JobStatus,
-    MessageDeliveryStatus, SenderType,
+    AgentSession, ChatAttachment, ChatMessage, Conversation, ConversationExport,
+    ConversationExportFormat, ConversationMode, JobDelegation, JobStatus,
+    MessageDeliveryStatus, MessageSearchResult, SenderType,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -946,6 +947,215 @@ impl ChatStore {
                 c.last_message_time = Some(chrono::Utc::now());
             }
         }
+    }
+
+    pub async fn export_transcript(
+        &self,
+        conv_id: uuid::Uuid,
+        format: ConversationExportFormat,
+    ) -> Result<ConversationExport, String> {
+        let conv = {
+            let lock = self.conversations.read().await;
+            lock.get(&conv_id).cloned().ok_or_else(|| "Conversation not found".to_string())?
+        };
+        let messages = self.get_messages(conv_id).await;
+        let mode = conv
+            .collaboration
+            .as_ref()
+            .map(|c| c.mode.clone())
+            .unwrap_or(ConversationMode::Casual);
+        let exported_at = chrono::Utc::now();
+
+        let content = match format {
+            ConversationExportFormat::Json => {
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "conversation_id": conv.id,
+                    "title": conv.title,
+                    "is_group": conv.is_group,
+                    "mode": mode,
+                    "participants": conv.participant_ids,
+                    "exported_at": exported_at,
+                    "message_count": messages.len(),
+                    "messages": messages,
+                }))
+                .map_err(|e| e.to_string())?
+            }
+            ConversationExportFormat::PlainText => {
+                let mut out = String::new();
+                out.push_str(&format!(
+                    "RAIN TRANSCRIPT: {}\nMode: {:?}\nExported: {}\n\n",
+                    conv.title, mode, exported_at
+                ));
+                for msg in &messages {
+                    let type_tag = match msg.sender_type {
+                        SenderType::Human => "HUMAN",
+                        SenderType::Agent => "AGENT",
+                        SenderType::System => "SYSTEM",
+                    };
+                    out.push_str(&format!(
+                        "[{}] {} ({}): {}\n",
+                        msg.timestamp.format("%Y-%m-%d %H:%M:%S UTC"),
+                        msg.sender_name,
+                        type_tag,
+                        msg.text
+                    ));
+                    for att in &msg.attachments {
+                        out.push_str(&format!("  [Attachment: {} ({} bytes)]\n", att.name, att.size_bytes));
+                    }
+                }
+                out
+            }
+            ConversationExportFormat::Markdown => {
+                let mut out = String::new();
+                out.push_str(&format!(
+                    "# RAIN Conversation: {}\n\n- **ID**: `{}`\n- **Type**: {}\n- **Mode**: {:?}\n- **Exported**: {}\n- **Messages**: {}\n- **Participants**: {}\n\n---\n\n",
+                    conv.title,
+                    conv.id,
+                    if conv.is_group { "Group Channel" } else { "Direct Chat" },
+                    mode,
+                    exported_at.to_rfc3339(),
+                    messages.len(),
+                    conv.participant_ids.join(", ")
+                ));
+                for msg in &messages {
+                    let badge = match msg.sender_type {
+                        SenderType::Human => "🧑 Human",
+                        SenderType::Agent => "🤖 Agent",
+                        SenderType::System => "⚙️ System",
+                    };
+                    out.push_str(&format!(
+                        "### {} — {}\n*{}*\n\n",
+                        msg.sender_name,
+                        badge,
+                        msg.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+                    ));
+                    if let Some(coworker) = &msg.coworker {
+                        out.push_str(&format!(
+                            "> **Coworker Envelope** (`{:?}`)\n\n",
+                            coworker.kind
+                        ));
+                    }
+                    out.push_str(&msg.text);
+                    out.push_str("\n\n");
+                    if !msg.attachments.is_empty() {
+                        out.push_str("**Attachments:**\n");
+                        for att in &msg.attachments {
+                            let sha = att.sha256.as_deref().unwrap_or("none");
+                            out.push_str(&format!(
+                                "- `{}` ({} bytes, mime: `{}`) [SHA-256: `{}`]\n",
+                                att.name, att.size_bytes, att.mime_type, sha
+                            ));
+                        }
+                        out.push_str("\n");
+                    }
+                    out.push_str("---\n\n");
+                }
+                out
+            }
+        };
+
+        let estimated_tokens = (content.len() + 3) / 4;
+        Ok(ConversationExport {
+            conversation_id: conv.id,
+            title: conv.title,
+            is_group: conv.is_group,
+            mode,
+            participant_ids: conv.participant_ids,
+            message_count: messages.len(),
+            exported_at,
+            format,
+            content,
+            estimated_tokens,
+        })
+    }
+
+    pub async fn search_messages(
+        &self,
+        conv_id: Option<uuid::Uuid>,
+        query: &str,
+        sender_filter: Option<&str>,
+        limit: Option<usize>,
+    ) -> Vec<MessageSearchResult> {
+        let q = query.trim().to_lowercase();
+        let conv_filter = conv_id;
+        let conv_map = {
+            let lock = self.conversations.read().await;
+            lock.clone()
+        };
+        let messages_map = {
+            let lock = self.messages.read().await;
+            lock.clone()
+        };
+
+        let mut results = Vec::new();
+        let target_sender = sender_filter.map(|s| s.to_lowercase());
+
+        for (cid, msgs) in messages_map {
+            if let Some(target_cid) = conv_filter {
+                if cid != target_cid {
+                    continue;
+                }
+            }
+            let title = conv_map.get(&cid).map(|c| c.title.clone()).unwrap_or_else(|| "Unknown".into());
+
+            for msg in msgs {
+                if let Some(ref filter) = target_sender {
+                    let sender_match = match msg.sender_type {
+                        SenderType::Human => filter == "human",
+                        SenderType::Agent => filter == "agent",
+                        SenderType::System => filter == "system",
+                    };
+                    if !sender_match {
+                        continue;
+                    }
+                }
+
+                let text_lower = msg.text.to_lowercase();
+                let text_matched = q.is_empty() || text_lower.contains(&q);
+                let mut matched_atts = Vec::new();
+                for att in &msg.attachments {
+                    if q.is_empty() || att.name.to_lowercase().contains(&q) {
+                        matched_atts.push(att.name.clone());
+                    }
+                }
+
+                if text_matched || !matched_atts.is_empty() {
+                    let snippet = if q.is_empty() {
+                        if msg.text.len() > 140 {
+                            format!("{}...", &msg.text[..140])
+                        } else {
+                            msg.text.clone()
+                        }
+                    } else if let Some(idx) = text_lower.find(&q) {
+                        let start = idx.saturating_sub(40);
+                        let end = (idx + q.len() + 60).min(msg.text.len());
+                        let prefix = if start > 0 { "..." } else { "" };
+                        let suffix = if end < msg.text.len() { "..." } else { "" };
+                        format!("{}{}{}", prefix, &msg.text[start..end], suffix)
+                    } else {
+                        format!("Matched attachment(s): {}", matched_atts.join(", "))
+                    };
+
+                    results.push(MessageSearchResult {
+                        message_id: msg.id,
+                        conversation_id: cid,
+                        conversation_title: title.clone(),
+                        sender_id: msg.sender_id,
+                        sender_name: msg.sender_name,
+                        sender_type: msg.sender_type,
+                        snippet,
+                        timestamp: msg.timestamp,
+                        matched_attachments: matched_atts,
+                    });
+                }
+            }
+        }
+
+        results.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        if let Some(lim) = limit {
+            results.truncate(lim);
+        }
+        results
     }
 }
 

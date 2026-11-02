@@ -228,3 +228,47 @@ pub struct AgentTrace {
     pub step: String,
     pub timestamp: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ConversationExportFormat {
+    Markdown,
+    Json,
+    PlainText,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationExport {
+    pub conversation_id: uuid::Uuid,
+    pub title: String,
+    pub is_group: bool,
+    pub mode: ConversationMode,
+    pub participant_ids: Vec<String>,
+    pub message_count: usize,
+    pub exported_at: DateTime<Utc>,
+    pub format: ConversationExportFormat,
+    pub content: String,
+    pub estimated_tokens: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageSearchResult {
+    pub message_id: uuid::Uuid,
+    pub conversation_id: uuid::Uuid,
+    pub conversation_title: String,
+    pub sender_id: String,
+    pub sender_name: String,
+    pub sender_type: SenderType,
+    pub snippet: String,
+    pub timestamp: DateTime<Utc>,
+    pub matched_attachments: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationSearchQuery {
+    pub query: String,
+    pub conversation_id: Option<uuid::Uuid>,
+    pub sender_type: Option<SenderType>,
+    pub limit: Option<usize>,
+}
+

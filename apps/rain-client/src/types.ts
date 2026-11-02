@@ -213,3 +213,31 @@ export interface ChatDispatch {
  id:string;conversation_id:string;message_id:string;run_id:string|null;source_id:string;source_name:string;target_id:string;target_name:string;target_machine:string|null;
  status:string;queued_at:string;started_at:string|null;finished_at:string|null;error:string|null;
 }
+
+export type ConversationExportFormat = 'markdown' | 'json' | 'plaintext';
+
+export interface ConversationExport {
+  conversation_id: string;
+  title: string;
+  is_group: boolean;
+  mode: string;
+  participant_ids: string[];
+  message_count: number;
+  exported_at: string;
+  format: ConversationExportFormat;
+  content: string;
+  estimated_tokens: number;
+}
+
+export interface MessageSearchResult {
+  message_id: string;
+  conversation_id: string;
+  conversation_title: string;
+  sender_id: string;
+  sender_name: string;
+  sender_type: 'human' | 'agent' | 'system';
+  snippet: string;
+  timestamp: string;
+  matched_attachments: string[];
+}
+

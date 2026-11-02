@@ -100,3 +100,39 @@ export function formatUptime(seconds: number): string {
   return `${m}m`;
 }
 
+export async function exportConversation(
+  convId: string,
+  format: 'markdown' | 'json' | 'plaintext' = 'markdown'
+) {
+  const res = await apiRequest<any>(`/api/v1/conversations/${convId}/export?format=${format}`);
+  return res.data;
+}
+
+export async function searchMessages(
+  convId: string | null,
+  query: string,
+  sender?: string
+) {
+  const base = convId ? `/api/v1/conversations/${convId}/search` : `/api/v1/conversations/search`;
+  const params = new URLSearchParams();
+  if (query) params.set('q', query);
+  if (sender && sender !== 'all') params.set('sender', sender);
+  const qs = params.toString();
+  const endpoint = qs ? `${base}?${qs}` : base;
+  const res = await apiRequest<any[]>(endpoint);
+  return res.data;
+}
+
+export function triggerFileDownload(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+

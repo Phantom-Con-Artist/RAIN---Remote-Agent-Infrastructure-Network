@@ -7,9 +7,9 @@ import { TerminalPanel } from './TerminalPanel';
 import { AttachmentCard } from './AttachmentCard';
 import { GroupAwareness } from './GroupAwareness';
 import React, { useState, useRef, useEffect } from 'react';
-import { FiPlus, FiSend, FiArrowLeft, FiTrash2, FiStopCircle, FiUsers, FiUser, FiCheck, FiX, FiActivity, FiPaperclip } from 'react-icons/fi';
+import { FiPlus, FiSend, FiArrowLeft, FiTrash2, FiStopCircle, FiUsers, FiUser, FiCheck, FiX, FiActivity, FiPaperclip, FiDownload, FiSearch } from 'react-icons/fi';
 import { Conversation, ChatMessage, AgentSession, ChatAttachment } from '../types';
-import { apiRequest, formatTime } from '../api';
+import { apiRequest, formatTime, exportConversation, triggerFileDownload } from '../api';
 interface ChatsViewProps {
     conversations: Conversation[];
     activeConversationId: string | null;
@@ -79,10 +79,52 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
         previousId.current = activeConv?.id || null;
         setAttachmentError('');
         setControlError('');
+        setMessageSearchQuery('');
+        setMessageSearchOpen(false);
+        setExportNotice(null);
     }, [activeConv?.id]);
     useEffect(() => { draftState.current = { text: inputText, files: pendingFiles }; }, [inputText, pendingFiles]);
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportNotice, setExportNotice] = useState<string | null>(null);
+    const [messageSearchOpen, setMessageSearchOpen] = useState(false);
+    const [messageSearchQuery, setMessageSearchQuery] = useState('');
+    const [messageSenderFilter, setMessageSenderFilter] = useState<'all' | 'human' | 'agent' | 'system'>('all');
+
+    const handleExport = async (format: 'markdown' | 'json' | 'plaintext') => {
+        if (!activeConv || isExporting) return;
+        setIsExporting(true);
+        setExportNotice(null);
+        try {
+            const data = await exportConversation(activeConv.id, format);
+            const ext = format === 'markdown' ? 'md' : format === 'json' ? 'json' : 'txt';
+            const mime = format === 'json' ? 'application/json' : 'text/plain';
+            const cleanTitle = activeConv.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            const filename = `${cleanTitle || 'conversation'}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+            triggerFileDownload(data.content, filename, mime);
+            setExportNotice(`Exported ${data.message_count} messages (~${data.estimated_tokens} tokens)`);
+            setTimeout(() => setExportNotice(null), 4000);
+        } catch (e: any) {
+            setExportNotice(`Export failed: ${e.message}`);
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     const workingMembers = sessions.filter(s => activeConv?.participant_ids.includes(s.id) && ['working', 'thinking', 'responding'].includes(s.state));
     const visibleMessages = messages.filter(m => m.sender_type === 'human' || !m.text.includes('\x1b'));
+    const searchedMessages = visibleMessages.filter(m => {
+        if (messageSenderFilter !== 'all' && m.sender_type !== messageSenderFilter) {
+            return false;
+        }
+        if (!messageSearchQuery.trim()) {
+            return true;
+        }
+        const q = messageSearchQuery.toLowerCase();
+        const textMatch = m.text.toLowerCase().includes(q);
+        const senderMatch = m.sender_name.toLowerCase().includes(q);
+        const attMatch = m.attachments.some(a => a.name.toLowerCase().includes(q));
+        return textMatch || senderMatch || attMatch;
+    });
     const filteredConvs = conversations.filter(c => {
         if (search && !(`${c.title} ${c.last_message || ''}`).toLowerCase().includes(search.toLowerCase()))
             return false;
@@ -195,6 +237,50 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
               </div>
 
               <div className="header-actions flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto md:overflow-visible">
+                <button
+                  type="button"
+                  className={`icon-button inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-canvas-surface/70 px-3 py-2 text-xs font-medium text-ink transition-colors hover:border-border-glow hover:bg-canvas-hover ${messageSearchOpen ? 'border-status-online/40 bg-status-online/15' : ''}`}
+                  onClick={() => setMessageSearchOpen(prev => !prev)}
+                  title="Search messages in conversation"
+                  aria-label="Search messages"
+                >
+                  <FiSearch size={14} />
+                  <span className="hidden sm:inline">SEARCH</span>
+                </button>
+
+                <details className="chat-export relative [&>summary]:rounded-lg [&>summary]:border [&>summary]:border-border-subtle [&>summary]:px-3 [&[open]]:z-30 [&[open]>div]:absolute [&[open]>div]:right-0 [&[open]>div]:min-w-48 [&[open]>div]:rounded-xl [&[open]>div]:border [&[open]>div]:border-border-subtle [&[open]>div]:bg-canvas-elevated [&[open]>div]:p-2 [&[open]>div]:shadow-lg">
+                  <summary className="icon-button inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center gap-2 text-xs font-medium text-ink hover:border-border-glow hover:bg-canvas-hover">
+                    <FiDownload size={14} />
+                    <span>EXPORT</span>
+                  </summary>
+                  <div className="space-y-1">
+                    <button
+                      type="button"
+                      className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-ink transition-colors hover:bg-canvas-hover"
+                      disabled={isExporting}
+                      onClick={() => handleExport('markdown')}
+                    >
+                      Markdown (.md)
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-ink transition-colors hover:bg-canvas-hover"
+                      disabled={isExporting}
+                      onClick={() => handleExport('json')}
+                    >
+                      JSON (.json)
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-ink transition-colors hover:bg-canvas-hover"
+                      disabled={isExporting}
+                      onClick={() => handleExport('plaintext')}
+                    >
+                      Plain Text (.txt)
+                    </button>
+                  </div>
+                </details>
+
                 {directMember?.provider.endsWith('_chat') && <button className="icon-button inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-canvas-surface/70 px-3 py-2 text-xs font-medium text-ink transition-colors hover:border-border-glow hover:bg-canvas-hover disabled:cursor-not-allowed disabled:opacity-45 [&.primary]:border-status-online/40 [&.primary]:bg-status-online/15 [&.primary]:text-ink [&.danger]:border-status-danger/40 [&.danger]:text-status-danger" disabled={controlBusy} onClick={() => runControl(async () => {
                     const r = await apiRequest<{
                         id: string;
@@ -213,6 +299,56 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
                 </button></div></details>
               </div>
             </div>
+
+            {messageSearchOpen && (
+              <div className="message-search-bar flex shrink-0 items-center gap-3 border-b border-border-subtle bg-canvas-surface/90 px-4 py-2 text-xs">
+                <FiSearch size={14} className="text-ink-muted" />
+                <input
+                  type="text"
+                  className="flex-1 rounded-md border border-border-subtle bg-canvas-base px-3 py-1.5 text-xs text-ink placeholder:text-ink-muted focus:border-border-glow focus:outline-none"
+                  placeholder="Filter messages, code, or attachments in this chat…"
+                  value={messageSearchQuery}
+                  onChange={e => setMessageSearchQuery(e.target.value)}
+                  autoFocus
+                />
+                <select
+                  aria-label="Filter by sender"
+                  value={messageSenderFilter}
+                  onChange={e => setMessageSenderFilter(e.target.value as any)}
+                  className="rounded-md border border-border-subtle bg-canvas-base px-2 py-1.5 text-xs text-ink"
+                >
+                  <option value="all">All senders</option>
+                  <option value="human">Human only</option>
+                  <option value="agent">Agents only</option>
+                  <option value="system">System only</option>
+                </select>
+                <span className="shrink-0 font-mono text-[11px] text-ink-muted">
+                  {searchedMessages.length} of {visibleMessages.length}
+                </span>
+                {messageSearchQuery && (
+                  <button
+                    type="button"
+                    className="text-xs text-ink-muted hover:text-ink"
+                    onClick={() => setMessageSearchQuery('')}
+                  >
+                    Clear
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="rounded p-1 text-ink-muted hover:bg-canvas-hover hover:text-ink"
+                  onClick={() => setMessageSearchOpen(false)}
+                  title="Close search"
+                >
+                  <FiX size={14} />
+                </button>
+              </div>
+            )}
+            {exportNotice && (
+              <div className="export-banner shrink-0 border-b border-status-online/30 bg-status-online/10 px-4 py-1.5 text-center font-mono text-xs text-ink">
+                {exportNotice}
+              </div>
+            )}
 
             {activeConv.is_group && <details className="coworker-controls shrink-0 border-b border-border-chisel px-4 [&_summary]:text-xs [&[open]]:max-h-[35vh] [&[open]]:overflow-y-auto" open={settingsOpen} onToggle={e => setSettingsOpen(e.currentTarget.open)}><summary>Channel settings · {modeValue.charAt(0).toUpperCase() + modeValue.slice(1)}</summary>
               <div className="coworker-mode flex flex-wrap items-center gap-3 py-3 text-xs">
@@ -242,7 +378,12 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
             {/* Messages Feed */}
             {terminalId ? <div className="chat-terminal min-h-0 flex-1 overflow-auto p-4"><TerminalPanel key={terminalId} id={terminalId} onClose={() => setTerminalId(null)}/></div> : <div className="chat-messages-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-6 md:px-8 [&>*]:mx-auto [&>*]:w-full [&>*]:max-w-4xl" ref={containerRef} onScroll={e => { const el = e.currentTarget; pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}>
               {interactiveMembers.length > 0 && <div className="native-chat-notice rounded-xl border border-status-warning/30 bg-bubble-sudo p-4 text-xs">{interactiveMembers.map(s => s.name).join(', ')} uses terminal mode. Open its terminal above, or start a chat adapter from Machines for message replies.</div>}
-              {visibleMessages.map((msg, index) => <React.Fragment key={msg.id}>{(index === 0 || new Date(visibleMessages[index - 1].timestamp).toDateString() !== new Date(msg.timestamp).toDateString()) && <div className="epoch-divider flex items-center justify-center py-3"><span className="rounded-full border border-border-chisel bg-canvas-surface/70 px-4 py-2 font-mono text-[10px] tracking-wider text-ink-muted">{new Date(msg.timestamp).toDateString() === new Date().toDateString() ? 'TODAY' : new Date(msg.timestamp).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}</span></div>}<ChatMessageItem message={msg} sessions={sessions} onApproveJob={onApproveJob}/></React.Fragment>)}
+              {searchedMessages.map((msg, index) => <React.Fragment key={msg.id}>{(index === 0 || new Date(searchedMessages[index - 1].timestamp).toDateString() !== new Date(msg.timestamp).toDateString()) && <div className="epoch-divider flex items-center justify-center py-3"><span className="rounded-full border border-border-chisel bg-canvas-surface/70 px-4 py-2 font-mono text-[10px] tracking-wider text-ink-muted">{new Date(msg.timestamp).toDateString() === new Date().toDateString() ? 'TODAY' : new Date(msg.timestamp).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}</span></div>}<ChatMessageItem message={msg} sessions={sessions} onApproveJob={onApproveJob}/></React.Fragment>)}
+              {searchedMessages.length === 0 && visibleMessages.length > 0 && (
+                <div className="py-12 text-center text-xs text-ink-muted">
+                  No messages in this chat match "{messageSearchQuery}".
+                </div>
+              )}
               {workingMembers.length > 0 && <div className="typing-state flex items-center gap-3 py-2 font-mono text-xs text-ink-muted" role="status"><span className="inline-flex items-center gap-1" aria-hidden="true">{[0, 1, 2].map(i => <i key={i} className="size-1.5 rounded-full bg-status-working motion-safe:animate-agent" style={{ animationDelay: `${i * 150}ms` }}/>)}</span>{workingMembers.map(s => s.name).join(', ')} is executing a turn…</div>}
               <div ref={messagesEndRef}/>
             </div>}
