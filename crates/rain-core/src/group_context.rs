@@ -29,6 +29,10 @@ fn context_message(message: &ChatMessage) -> ChatMessage {
         job_delegation: None,
         coworker: message.coworker.clone(),
         timestamp: message.timestamp,
+        is_pinned: message.is_pinned,
+        is_bookmarked: message.is_bookmarked,
+        bookmark_note: message.bookmark_note.clone(),
+        tags: message.tags.clone(),
     }
 }
 

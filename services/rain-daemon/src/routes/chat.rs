@@ -5,7 +5,7 @@ use hyper::body::Incoming;
 use hyper::{Method, Request, StatusCode};
 use rain_protocol::{
     ApiResponse, ConversationExportFormat, CreateConversationRequest, DirectChatRequest,
-    SendMessageRequest,
+    SendMessageRequest, UpdateMessageMetaRequest,
 };
 
 pub(super) async fn handle(
@@ -50,6 +50,85 @@ pub(super) async fn handle(
                         .search_messages(Some(conv_id), &q, sender.as_deref(), limit)
                         .await;
                     Ok(json_response(StatusCode::OK, &ApiResponse::ok(results)))
+                } else {
+                    Ok(json_response(
+                        StatusCode::BAD_REQUEST,
+                        &ApiResponse::<()>::err("Invalid conversation UUID"),
+                    ))
+                }
+            } else {
+                Ok(json_response(
+                    StatusCode::NOT_FOUND,
+                    &ApiResponse::<()>::err("Endpoint not found"),
+                ))
+            }
+        }
+
+        (Method::GET, "/api/v1/conversations/bookmarks") => {
+            let results = state.chat.get_bookmarked_messages(None).await;
+            Ok(json_response(StatusCode::OK, &ApiResponse::ok(results)))
+        }
+
+        (Method::GET, path_str)
+            if path_str.starts_with("/api/v1/conversations/")
+                && path_str.ends_with("/pinned") =>
+        {
+            let parts: Vec<&str> = path_str.split('/').collect();
+            if parts.len() == 6 {
+                if let Ok(conv_id) = uuid::Uuid::parse_str(parts[4]) {
+                    let results = state.chat.get_pinned_messages(conv_id).await;
+                    Ok(json_response(StatusCode::OK, &ApiResponse::ok(results)))
+                } else {
+                    Ok(json_response(
+                        StatusCode::BAD_REQUEST,
+                        &ApiResponse::<()>::err("Invalid conversation UUID"),
+                    ))
+                }
+            } else {
+                Ok(json_response(
+                    StatusCode::NOT_FOUND,
+                    &ApiResponse::<()>::err("Endpoint not found"),
+                ))
+            }
+        }
+
+        (Method::GET, path_str)
+            if path_str.starts_with("/api/v1/conversations/")
+                && path_str.ends_with("/bookmarks") =>
+        {
+            let parts: Vec<&str> = path_str.split('/').collect();
+            if parts.len() == 6 {
+                if let Ok(conv_id) = uuid::Uuid::parse_str(parts[4]) {
+                    let results = state.chat.get_bookmarked_messages(Some(conv_id)).await;
+                    Ok(json_response(StatusCode::OK, &ApiResponse::ok(results)))
+                } else {
+                    Ok(json_response(
+                        StatusCode::BAD_REQUEST,
+                        &ApiResponse::<()>::err("Invalid conversation UUID"),
+                    ))
+                }
+            } else {
+                Ok(json_response(
+                    StatusCode::NOT_FOUND,
+                    &ApiResponse::<()>::err("Endpoint not found"),
+                ))
+            }
+        }
+
+        (Method::GET, path_str)
+            if path_str.starts_with("/api/v1/conversations/")
+                && path_str.ends_with("/stats") =>
+        {
+            let parts: Vec<&str> = path_str.split('/').collect();
+            if parts.len() == 6 {
+                if let Ok(conv_id) = uuid::Uuid::parse_str(parts[4]) {
+                    match state.chat.get_conversation_stats(conv_id).await {
+                        Ok(stats) => Ok(json_response(StatusCode::OK, &ApiResponse::ok(stats))),
+                        Err(e) => Ok(json_response(
+                            StatusCode::NOT_FOUND,
+                            &ApiResponse::<()>::err(e),
+                        )),
+                    }
                 } else {
                     Ok(json_response(
                         StatusCode::BAD_REQUEST,
@@ -279,6 +358,59 @@ pub(super) async fn handle(
                     Ok(json_response(
                         StatusCode::BAD_REQUEST,
                         &ApiResponse::<()>::err("Invalid conversation UUID"),
+                    ))
+                }
+            } else {
+                Ok(json_response(
+                    StatusCode::NOT_FOUND,
+                    &ApiResponse::<()>::err("Endpoint not found"),
+                ))
+            }
+        }
+
+        (Method::PATCH, path_str)
+            if path_str.starts_with("/api/v1/conversations/")
+                && path_str.contains("/messages/") =>
+        {
+            let parts: Vec<&str> = path_str.split('/').collect();
+            if parts.len() == 7 {
+                if let (Ok(conv_id), Ok(msg_id)) = (
+                    uuid::Uuid::parse_str(parts[4]),
+                    uuid::Uuid::parse_str(parts[6]),
+                ) {
+                    let body_bytes = req.into_body().collect().await?.to_bytes();
+                    match serde_json::from_slice::<UpdateMessageMetaRequest>(&body_bytes) {
+                        Ok(meta_req) => {
+                            match state
+                                .chat
+                                .update_message_meta(
+                                    conv_id,
+                                    msg_id,
+                                    meta_req.is_pinned,
+                                    meta_req.is_bookmarked,
+                                    meta_req.bookmark_note,
+                                    meta_req.tags,
+                                )
+                                .await
+                            {
+                                Ok(updated_msg) => {
+                                    Ok(json_response(StatusCode::OK, &ApiResponse::ok(updated_msg)))
+                                }
+                                Err(err) => Ok(json_response(
+                                    StatusCode::BAD_REQUEST,
+                                    &ApiResponse::<()>::err(err),
+                                )),
+                            }
+                        }
+                        Err(e) => Ok(json_response(
+                            StatusCode::BAD_REQUEST,
+                            &ApiResponse::<()>::err(format!("Invalid metadata request body: {}", e)),
+                        )),
+                    }
+                } else {
+                    Ok(json_response(
+                        StatusCode::BAD_REQUEST,
+                        &ApiResponse::<()>::err("Invalid conversation or message UUID"),
                     ))
                 }
             } else {

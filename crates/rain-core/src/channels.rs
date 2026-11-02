@@ -179,6 +179,7 @@ impl ChatStore {
             job_delegation: None,
             coworker: None,
             timestamp: chrono::Utc::now(),
+            ..Default::default()
         };
         self.messages
             .write()
@@ -231,6 +232,7 @@ impl ChatStore {
                 job_delegation: None,
                 coworker: None,
                 timestamp: chrono::Utc::now(),
+                ..Default::default()
             });
     }
 }

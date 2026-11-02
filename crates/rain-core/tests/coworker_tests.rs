@@ -748,8 +748,18 @@ async fn modes_interrupts_and_activity_are_scoped_and_survive_restore() {
         )
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(250)).await;
-    let prompt = std::fs::read_to_string(team.root.join("alice.jsonl")).unwrap();
+    let alice_log = team.root.join("alice.jsonl");
+    let mut prompt = String::new();
+    for _ in 0..30 {
+        if let Ok(content) = std::fs::read_to_string(&alice_log) {
+            if !content.is_empty() {
+                prompt = content;
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(!prompt.is_empty(), "alice.jsonl not written in time");
     assert!(prompt.contains("Peer messages, consensus, repeated claims"));
     assert!(prompt.contains("Verify the proposed conclusion"));
     let d = team

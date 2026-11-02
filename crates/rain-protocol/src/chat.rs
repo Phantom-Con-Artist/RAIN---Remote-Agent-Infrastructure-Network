@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SenderType {
+    #[default]
     Human,
     Agent,
     System,
@@ -23,9 +24,10 @@ pub enum SessionState {
     Error,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageDeliveryStatus {
+    #[default]
     Sent,
     Delivered,
     Read,
@@ -58,6 +60,36 @@ pub struct ChatMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coworker: Option<CoworkerEnvelope>,
     pub timestamp: DateTime<Utc>,
+    #[serde(default)]
+    pub is_pinned: bool,
+    #[serde(default)]
+    pub is_bookmarked: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bookmark_note: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+}
+
+impl Default for ChatMessage {
+    fn default() -> Self {
+        Self {
+            id: uuid::Uuid::nil(),
+            conversation_id: uuid::Uuid::nil(),
+            sender_id: String::new(),
+            sender_name: String::new(),
+            sender_type: SenderType::Human,
+            text: String::new(),
+            status: MessageDeliveryStatus::Sent,
+            attachments: Vec::new(),
+            job_delegation: None,
+            coworker: None,
+            timestamp: Utc::now(),
+            is_pinned: false,
+            is_bookmarked: false,
+            bookmark_note: None,
+            tags: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,5 +302,29 @@ pub struct ConversationSearchQuery {
     pub conversation_id: Option<uuid::Uuid>,
     pub sender_type: Option<SenderType>,
     pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UpdateMessageMetaRequest {
+    pub is_pinned: Option<bool>,
+    pub is_bookmarked: Option<bool>,
+    pub bookmark_note: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationStats {
+    pub conversation_id: uuid::Uuid,
+    pub total_messages: usize,
+    pub human_messages: usize,
+    pub agent_messages: usize,
+    pub system_messages: usize,
+    pub pinned_messages: usize,
+    pub bookmarked_messages: usize,
+    pub total_words: usize,
+    pub estimated_tokens: usize,
+    pub attachments_count: usize,
+    pub top_tags: Vec<(String, usize)>,
+    pub active_participants: Vec<String>,
 }
 

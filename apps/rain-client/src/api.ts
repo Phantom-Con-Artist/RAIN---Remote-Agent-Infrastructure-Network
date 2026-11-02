@@ -135,4 +135,34 @@ export function triggerFileDownload(content: string, filename: string, mimeType:
   URL.revokeObjectURL(url);
 }
 
+export async function updateMessageMeta(
+  convId: string,
+  msgId: string,
+  meta: { is_pinned?: boolean; is_bookmarked?: boolean; bookmark_note?: string; tags?: string[] }
+) {
+  const res = await apiRequest<any>(`/api/v1/conversations/${convId}/messages/${msgId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(meta),
+  });
+  return res.data;
+}
+
+export async function fetchPinnedMessages(convId: string) {
+  const res = await apiRequest<any[]>(`/api/v1/conversations/${convId}/pinned`);
+  return res.data;
+}
+
+export async function fetchBookmarkedMessages(convId?: string) {
+  const endpoint = convId ? `/api/v1/conversations/${convId}/bookmarks` : `/api/v1/conversations/bookmarks`;
+  const res = await apiRequest<any[]>(endpoint);
+  return res.data;
+}
+
+export async function fetchConversationStats(convId: string) {
+  const res = await apiRequest<any>(`/api/v1/conversations/${convId}/stats`);
+  return res.data;
+}
+
+
 

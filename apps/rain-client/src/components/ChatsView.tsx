@@ -7,9 +7,9 @@ import { TerminalPanel } from './TerminalPanel';
 import { AttachmentCard } from './AttachmentCard';
 import { GroupAwareness } from './GroupAwareness';
 import React, { useState, useRef, useEffect } from 'react';
-import { FiPlus, FiSend, FiArrowLeft, FiTrash2, FiStopCircle, FiUsers, FiUser, FiCheck, FiX, FiActivity, FiPaperclip, FiDownload, FiSearch } from 'react-icons/fi';
-import { Conversation, ChatMessage, AgentSession, ChatAttachment } from '../types';
-import { apiRequest, formatTime, exportConversation, triggerFileDownload } from '../api';
+import { FiPlus, FiSend, FiArrowLeft, FiTrash2, FiStopCircle, FiUsers, FiUser, FiCheck, FiX, FiActivity, FiPaperclip, FiDownload, FiSearch, FiStar, FiBookmark, FiBarChart2 } from 'react-icons/fi';
+import { Conversation, ChatMessage, AgentSession, ChatAttachment, ConversationStats, UpdateMessageMetaRequest } from '../types';
+import { apiRequest, formatTime, exportConversation, triggerFileDownload, fetchConversationStats, updateMessageMeta } from '../api';
 interface ChatsViewProps {
     conversations: Conversation[];
     activeConversationId: string | null;
@@ -25,10 +25,11 @@ interface ChatsViewProps {
     onDeleteConversation: (id: string) => Promise<void>;
     onApproveJob: (jobId: string, approved: boolean) => Promise<void>;
     onTriggerBatteryEvacuate: () => Promise<void>;
+    onUpdateMessageMeta?: (convId: string, msgId: string, meta: UpdateMessageMetaRequest) => Promise<void>;
     isMobileChatOpen: boolean;
     onCloseMobileChat: () => void;
 }
-export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConversationId, onSelectConversation, messages, sessions, onSendMessage, onStartDirect, onOpenNewGroup, onStopConversation, onResumeConversation, onCollaborationChange, onDeleteConversation, onApproveJob, isMobileChatOpen, onCloseMobileChat, }) => {
+export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConversationId, onSelectConversation, messages, sessions, onSendMessage, onStartDirect, onOpenNewGroup, onStopConversation, onResumeConversation, onCollaborationChange, onDeleteConversation, onApproveJob, onUpdateMessageMeta, isMobileChatOpen, onCloseMobileChat, }) => {
     const [pendingFiles, setPendingFiles] = useState<ChatAttachment[]>([]);
     const [attachmentError, setAttachmentError] = useState('');
     const [controlError, setControlError] = useState('');
@@ -82,6 +83,9 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
         setMessageSearchQuery('');
         setMessageSearchOpen(false);
         setExportNotice(null);
+        setMessageFilterMode('all');
+        setStatsOpen(false);
+        setStatsData(null);
     }, [activeConv?.id]);
     useEffect(() => { draftState.current = { text: inputText, files: pendingFiles }; }, [inputText, pendingFiles]);
     const [isExporting, setIsExporting] = useState(false);
@@ -89,6 +93,56 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
     const [messageSearchOpen, setMessageSearchOpen] = useState(false);
     const [messageSearchQuery, setMessageSearchQuery] = useState('');
     const [messageSenderFilter, setMessageSenderFilter] = useState<'all' | 'human' | 'agent' | 'system'>('all');
+    const [messageFilterMode, setMessageFilterMode] = useState<'all' | 'pinned' | 'bookmarked'>('all');
+    const [statsOpen, setStatsOpen] = useState(false);
+    const [statsData, setStatsData] = useState<ConversationStats | null>(null);
+    const [statsLoading, setStatsLoading] = useState(false);
+    const [statsError, setStatsError] = useState<string | null>(null);
+
+    const handleOpenStats = async () => {
+        if (!activeConv) return;
+        const next = !statsOpen;
+        setStatsOpen(next);
+        if (next) {
+            setStatsLoading(true);
+            setStatsError(null);
+            try {
+                const data = await fetchConversationStats(activeConv.id);
+                setStatsData(data);
+            } catch (err: any) {
+                setStatsError(err.message || 'Failed to load stats');
+            } finally {
+                setStatsLoading(false);
+            }
+        }
+    };
+
+    const handleTogglePin = async (msgId: string, pinned: boolean) => {
+        if (!activeConv) return;
+        if (onUpdateMessageMeta) {
+            await onUpdateMessageMeta(activeConv.id, msgId, { is_pinned: pinned });
+        } else {
+            await updateMessageMeta(activeConv.id, msgId, { is_pinned: pinned });
+        }
+    };
+
+    const handleToggleBookmark = async (msgId: string, bookmarked: boolean, note?: string) => {
+        if (!activeConv) return;
+        if (onUpdateMessageMeta) {
+            await onUpdateMessageMeta(activeConv.id, msgId, { is_bookmarked: bookmarked, bookmark_note: note });
+        } else {
+            await updateMessageMeta(activeConv.id, msgId, { is_bookmarked: bookmarked, bookmark_note: note });
+        }
+    };
+
+    const handleUpdateTags = async (msgId: string, tags: string[]) => {
+        if (!activeConv) return;
+        if (onUpdateMessageMeta) {
+            await onUpdateMessageMeta(activeConv.id, msgId, { tags });
+        } else {
+            await updateMessageMeta(activeConv.id, msgId, { tags });
+        }
+    };
 
     const handleExport = async (format: 'markdown' | 'json' | 'plaintext') => {
         if (!activeConv || isExporting) return;
@@ -112,7 +166,16 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
 
     const workingMembers = sessions.filter(s => activeConv?.participant_ids.includes(s.id) && ['working', 'thinking', 'responding'].includes(s.state));
     const visibleMessages = messages.filter(m => m.sender_type === 'human' || !m.text.includes('\x1b'));
-    const searchedMessages = visibleMessages.filter(m => {
+    const pinnedCount = visibleMessages.filter(m => m.is_pinned).length;
+    const bookmarkedCount = visibleMessages.filter(m => m.is_bookmarked).length;
+
+    const filteredByMode = visibleMessages.filter(m => {
+        if (messageFilterMode === 'pinned') return m.is_pinned;
+        if (messageFilterMode === 'bookmarked') return m.is_bookmarked;
+        return true;
+    });
+
+    const searchedMessages = filteredByMode.filter(m => {
         if (messageSenderFilter !== 'all' && m.sender_type !== messageSenderFilter) {
             return false;
         }
@@ -123,7 +186,9 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
         const textMatch = m.text.toLowerCase().includes(q);
         const senderMatch = m.sender_name.toLowerCase().includes(q);
         const attMatch = m.attachments.some(a => a.name.toLowerCase().includes(q));
-        return textMatch || senderMatch || attMatch;
+        const tagMatch = m.tags?.some(t => t.toLowerCase().includes(q));
+        const noteMatch = m.bookmark_note?.toLowerCase().includes(q);
+        return textMatch || senderMatch || attMatch || tagMatch || noteMatch;
     });
     const filteredConvs = conversations.filter(c => {
         if (search && !(`${c.title} ${c.last_message || ''}`).toLowerCase().includes(search.toLowerCase()))
@@ -237,6 +302,46 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
               </div>
 
               <div className="header-actions flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto md:overflow-visible">
+                <div className="hidden sm:flex items-center gap-1 rounded-lg border border-border-subtle bg-canvas-base/80 p-0.5">
+                  <button
+                    type="button"
+                    className={`rounded px-2.5 py-1 font-mono text-[10px] font-medium transition-colors ${
+                      messageFilterMode === 'all'
+                        ? 'bg-canvas-elevated text-ink shadow-sm'
+                        : 'text-ink-muted hover:text-ink'
+                    }`}
+                    onClick={() => setMessageFilterMode('all')}
+                  >
+                    ALL
+                  </button>
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-1 rounded px-2.5 py-1 font-mono text-[10px] font-medium transition-colors ${
+                      messageFilterMode === 'pinned'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : 'text-ink-muted hover:text-ink'
+                    }`}
+                    onClick={() => setMessageFilterMode(prev => (prev === 'pinned' ? 'all' : 'pinned'))}
+                    title="Filter pinned messages"
+                  >
+                    <FiStar size={10} className={messageFilterMode === 'pinned' ? 'fill-amber-400' : ''} />
+                    <span>PINNED ({pinnedCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-1 rounded px-2.5 py-1 font-mono text-[10px] font-medium transition-colors ${
+                      messageFilterMode === 'bookmarked'
+                        ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                        : 'text-ink-muted hover:text-ink'
+                    }`}
+                    onClick={() => setMessageFilterMode(prev => (prev === 'bookmarked' ? 'all' : 'bookmarked'))}
+                    title="Filter bookmarked messages"
+                  >
+                    <FiBookmark size={10} className={messageFilterMode === 'bookmarked' ? 'fill-indigo-400' : ''} />
+                    <span>SAVED ({bookmarkedCount})</span>
+                  </button>
+                </div>
+
                 <button
                   type="button"
                   className={`icon-button inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-canvas-surface/70 px-3 py-2 text-xs font-medium text-ink transition-colors hover:border-border-glow hover:bg-canvas-hover ${messageSearchOpen ? 'border-status-online/40 bg-status-online/15' : ''}`}
@@ -246,6 +351,19 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
                 >
                   <FiSearch size={14} />
                   <span className="hidden sm:inline">SEARCH</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`icon-button inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-canvas-surface/70 px-3 py-2 text-xs font-medium text-ink transition-colors hover:border-border-glow hover:bg-canvas-hover ${
+                    statsOpen ? 'border-status-online/40 bg-status-online/15' : ''
+                  }`}
+                  onClick={handleOpenStats}
+                  title="Conversation stats & token analytics"
+                  aria-label="Conversation Analytics"
+                >
+                  <FiBarChart2 size={14} />
+                  <span className="hidden sm:inline">STATS</span>
                 </button>
 
                 <details className="chat-export relative [&>summary]:rounded-lg [&>summary]:border [&>summary]:border-border-subtle [&>summary]:px-3 [&[open]]:z-30 [&[open]>div]:absolute [&[open]>div]:right-0 [&[open]>div]:min-w-48 [&[open]>div]:rounded-xl [&[open]>div]:border [&[open]>div]:border-border-subtle [&[open]>div]:bg-canvas-elevated [&[open]>div]:p-2 [&[open]>div]:shadow-lg">
@@ -349,6 +467,23 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
                 {exportNotice}
               </div>
             )}
+            {pinnedCount > 0 && messageFilterMode === 'all' && (
+              <div className="pinned-banner shrink-0 flex items-center justify-between border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-300">
+                <div className="flex items-center gap-2 font-mono text-[11px]">
+                  <FiStar size={12} className="fill-amber-400 text-amber-400" />
+                  <span>
+                    {pinnedCount} pinned message{pinnedCount > 1 ? 's' : ''} in this conversation
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMessageFilterMode('pinned')}
+                  className="font-mono text-[10px] uppercase underline hover:text-amber-200"
+                >
+                  View Pinned
+                </button>
+              </div>
+            )}
 
             {activeConv.is_group && <details className="coworker-controls shrink-0 border-b border-border-chisel px-4 [&_summary]:text-xs [&[open]]:max-h-[35vh] [&[open]]:overflow-y-auto" open={settingsOpen} onToggle={e => setSettingsOpen(e.currentTarget.open)}><summary>Channel settings · {modeValue.charAt(0).toUpperCase() + modeValue.slice(1)}</summary>
               <div className="coworker-mode flex flex-wrap items-center gap-3 py-3 text-xs">
@@ -378,7 +513,7 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
             {/* Messages Feed */}
             {terminalId ? <div className="chat-terminal min-h-0 flex-1 overflow-auto p-4"><TerminalPanel key={terminalId} id={terminalId} onClose={() => setTerminalId(null)}/></div> : <div className="chat-messages-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-6 md:px-8 [&>*]:mx-auto [&>*]:w-full [&>*]:max-w-4xl" ref={containerRef} onScroll={e => { const el = e.currentTarget; pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}>
               {interactiveMembers.length > 0 && <div className="native-chat-notice rounded-xl border border-status-warning/30 bg-bubble-sudo p-4 text-xs">{interactiveMembers.map(s => s.name).join(', ')} uses terminal mode. Open its terminal above, or start a chat adapter from Machines for message replies.</div>}
-              {searchedMessages.map((msg, index) => <React.Fragment key={msg.id}>{(index === 0 || new Date(searchedMessages[index - 1].timestamp).toDateString() !== new Date(msg.timestamp).toDateString()) && <div className="epoch-divider flex items-center justify-center py-3"><span className="rounded-full border border-border-chisel bg-canvas-surface/70 px-4 py-2 font-mono text-[10px] tracking-wider text-ink-muted">{new Date(msg.timestamp).toDateString() === new Date().toDateString() ? 'TODAY' : new Date(msg.timestamp).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}</span></div>}<ChatMessageItem message={msg} sessions={sessions} onApproveJob={onApproveJob}/></React.Fragment>)}
+              {searchedMessages.map((msg, index) => <React.Fragment key={msg.id}>{(index === 0 || new Date(searchedMessages[index - 1].timestamp).toDateString() !== new Date(msg.timestamp).toDateString()) && <div className="epoch-divider flex items-center justify-center py-3"><span className="rounded-full border border-border-chisel bg-canvas-surface/70 px-4 py-2 font-mono text-[10px] tracking-wider text-ink-muted">{new Date(msg.timestamp).toDateString() === new Date().toDateString() ? 'TODAY' : new Date(msg.timestamp).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}</span></div>}<ChatMessageItem message={msg} sessions={sessions} onApproveJob={onApproveJob} onTogglePin={handleTogglePin} onToggleBookmark={handleToggleBookmark} onUpdateTags={handleUpdateTags}/></React.Fragment>)}
               {searchedMessages.length === 0 && visibleMessages.length > 0 && (
                 <div className="py-12 text-center text-xs text-ink-muted">
                   No messages in this chat match "{messageSearchQuery}".
@@ -418,6 +553,122 @@ export const ChatsView: React.FC<ChatsViewProps> = ({ conversations, activeConve
                 <FiSend size={15}/>
               </button>
             </form>}
+
+            {/* Conversation Stats Drawer */}
+            {statsOpen && (
+              <div className="stats-drawer fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border-subtle bg-canvas-surface/98 p-6 shadow-2xl backdrop-blur-2xl">
+                <div className="flex items-center justify-between border-b border-border-subtle pb-4">
+                  <div className="flex items-center gap-2 font-mono text-sm font-semibold uppercase text-ink">
+                    <FiBarChart2 className="text-status-online" />
+                    <span>Conversation Analytics</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStatsOpen(false)}
+                    className="rounded p-1 text-ink-muted hover:bg-canvas-elevated hover:text-ink"
+                  >
+                    <FiX size={16} />
+                  </button>
+                </div>
+
+                {statsLoading ? (
+                  <div className="flex flex-1 items-center justify-center font-mono text-xs text-ink-muted">
+                    Loading analytics…
+                  </div>
+                ) : statsError ? (
+                  <div className="p-4 text-xs text-status-danger">{statsError}</div>
+                ) : statsData ? (
+                  <div className="flex-1 space-y-6 overflow-y-auto py-4">
+                    {/* Key Stats Cards */}
+                    <div className="grid grid-cols-2 gap-3 font-mono">
+                      <div className="rounded-xl border border-border-subtle bg-canvas-base/80 p-3">
+                        <span className="text-[10px] uppercase text-ink-muted">Total Messages</span>
+                        <p className="mt-1 text-xl font-bold text-ink">{statsData.total_messages}</p>
+                      </div>
+                      <div className="rounded-xl border border-border-subtle bg-canvas-base/80 p-3">
+                        <span className="text-[10px] uppercase text-ink-muted">Estimated Tokens</span>
+                        <p className="mt-1 text-xl font-bold text-status-online">~{statsData.estimated_tokens}</p>
+                      </div>
+                      <div className="rounded-xl border border-border-subtle bg-canvas-base/80 p-3">
+                        <span className="text-[10px] uppercase text-ink-muted">Total Words</span>
+                        <p className="mt-1 text-xl font-bold text-ink">{statsData.total_words}</p>
+                      </div>
+                      <div className="rounded-xl border border-border-subtle bg-canvas-base/80 p-3">
+                        <span className="text-[10px] uppercase text-ink-muted">Pinned / Saved</span>
+                        <p className="mt-1 text-xl font-bold text-ink">
+                          {statsData.pinned_messages} / {statsData.bookmarked_messages}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Breakdown */}
+                    <div className="space-y-2 rounded-xl border border-border-subtle bg-canvas-base/60 p-4 font-mono text-xs">
+                      <span className="text-[10px] uppercase tracking-wider text-ink-muted">Message Breakdown</span>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-canvas-elevated flex">
+                        <div
+                          style={{ width: `${(statsData.human_messages / Math.max(1, statsData.total_messages)) * 100}%` }}
+                          className="bg-blue-500"
+                          title={`Human: ${statsData.human_messages}`}
+                        />
+                        <div
+                          style={{ width: `${(statsData.agent_messages / Math.max(1, statsData.total_messages)) * 100}%` }}
+                          className="bg-status-online"
+                          title={`Agent: ${statsData.agent_messages}`}
+                        />
+                        <div
+                          style={{ width: `${(statsData.system_messages / Math.max(1, statsData.total_messages)) * 100}%` }}
+                          className="bg-status-warning"
+                          title={`System: ${statsData.system_messages}`}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[10px] text-ink-muted pt-1">
+                        <span className="flex items-center gap-1">
+                          <span className="size-2 rounded-full bg-blue-500" /> Human: {statsData.human_messages}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="size-2 rounded-full bg-status-online" /> Agent: {statsData.agent_messages}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="size-2 rounded-full bg-status-warning" /> System: {statsData.system_messages}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Top Tags */}
+                    {statsData.top_tags.length > 0 && (
+                      <div className="space-y-2 font-mono text-xs">
+                        <span className="text-[10px] uppercase tracking-wider text-ink-muted">Top Tags</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {statsData.top_tags.map(([tag, count]) => (
+                            <span
+                              key={tag}
+                              className="inline-flex items-center gap-1 rounded bg-canvas-elevated px-2 py-1 text-[11px] text-ink border border-border-subtle"
+                            >
+                              #{tag} <span className="text-[9px] text-ink-muted">×{count}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Active Participants */}
+                    <div className="space-y-2 font-mono text-xs">
+                      <span className="text-[10px] uppercase tracking-wider text-ink-muted">Active Participants</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {statsData.active_participants.map(p => (
+                          <span
+                            key={p}
+                            className="rounded border border-border-subtle bg-canvas-base/80 px-2 py-1 text-[11px] text-ink"
+                          >
+                            {p}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </>) : (<div className="[flex:1] [display:flex] [flex-direction:column] [align-items:center] [justify-content:center] [color:var(--text-muted)] [gap:12px]">
             <FiUsers size={36}/>
             <div className="messenger-empty max-w-md space-y-4 text-center [&_h2]:text-xl [&_p]:text-sm"><h2>Your agents, one conversation away</h2><p>Choose an agent to start a chat, or create a group to work with several agents together.</p><button className="icon-button inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-canvas-surface/70 px-3 py-2 text-xs font-medium text-ink transition-colors hover:border-border-glow hover:bg-canvas-hover disabled:cursor-not-allowed disabled:opacity-45 [&.primary]:border-status-online/40 [&.primary]:bg-status-online/15 [&.primary]:text-ink [&.danger]:border-status-danger/40 [&.danger]:text-status-danger primary border-status-online/40 bg-status-online/15 text-ink hover:bg-status-online/25" onClick={onOpenNewGroup}>CREATE_GROUP</button></div>

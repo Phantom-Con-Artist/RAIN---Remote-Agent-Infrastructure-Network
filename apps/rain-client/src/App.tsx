@@ -3,8 +3,8 @@ import { GuidePage } from './components/GuidePage';
 import { FilesWorkspace } from './components/FilesWorkspace';
 import { AgentWorkbench } from './components/AgentWorkbench';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { TabType, ThemeMode, Conversation, ChatMessage, AgentSession, MachineOverview, InstalledApp, NetworkMeshStatus, HubTopologyStatus, ChatAttachment } from './types';
-import { apiRequest, getHostUrl } from './api';
+import { TabType, ThemeMode, Conversation, ChatMessage, AgentSession, MachineOverview, InstalledApp, NetworkMeshStatus, HubTopologyStatus, ChatAttachment, UpdateMessageMetaRequest } from './types';
+import { apiRequest, getHostUrl, updateMessageMeta } from './api';
 import { Header } from './components/Header';
 import { ChatsView } from './components/ChatsView';
 import { MachinesView } from './components/MachinesView';
@@ -206,6 +206,21 @@ export const App: React.FC = () => {
             throw e;
         }
     };
+    const handleUpdateMessageMeta = useCallback(async (convId: string, msgId: string, meta: UpdateMessageMetaRequest) => {
+        try {
+            const updated = await updateMessageMeta(convId, msgId, meta);
+            setMessages(prev => prev.map(m => m.id === msgId ? updated : m));
+            if (meta.is_pinned !== undefined) {
+                showToast(meta.is_pinned ? 'Message pinned' : 'Message unpinned');
+            } else if (meta.is_bookmarked !== undefined) {
+                showToast(meta.is_bookmarked ? 'Message bookmarked' : 'Bookmark removed');
+            } else if (meta.tags) {
+                showToast('Tags updated');
+            }
+        } catch (e: any) {
+            showToast(`Update failed: ${e.message}`);
+        }
+    }, [showToast]);
     const handleCreateGroup = async (title: string, participantIds: string[]) => {
         try {
             const res = await apiRequest<Conversation>('/api/v1/conversations/create', {
@@ -337,7 +352,7 @@ export const App: React.FC = () => {
         {currentTab === 'home' && <HomePage sessions={sessions} conversations={conversations} onNavigate={setCurrentTab} onOpenConversation={id => { handleSelectConversation(id); setCurrentTab('chats'); }} connectionStatus={connectionStatus}/>}
         {currentTab === 'guide' && <GuidePage onNavigate={setCurrentTab}/>}
 
-        {currentTab === 'chats' && (<ChatsView conversations={conversations} activeConversationId={activeConversationId} onSelectConversation={handleSelectConversation} messages={messages} sessions={sessions} onSendMessage={handleSendMessage} onStartDirect={handleOpenDirect} onOpenNewGroup={() => setShowNewGroupModal(true)} onStopConversation={handleStopConversation} onResumeConversation={handleResumeConversation} onCollaborationChange={handleCollaboration} onDeleteConversation={handleDeleteConversation} onApproveJob={handleApproveJob} onTriggerBatteryEvacuate={handleTriggerBatteryEvacuate} isMobileChatOpen={isMobileChatOpen} onCloseMobileChat={() => setIsMobileChatOpen(false)}/>)}
+        {currentTab === 'chats' && (<ChatsView conversations={conversations} activeConversationId={activeConversationId} onSelectConversation={handleSelectConversation} messages={messages} sessions={sessions} onSendMessage={handleSendMessage} onStartDirect={handleOpenDirect} onOpenNewGroup={() => setShowNewGroupModal(true)} onStopConversation={handleStopConversation} onResumeConversation={handleResumeConversation} onCollaborationChange={handleCollaboration} onDeleteConversation={handleDeleteConversation} onApproveJob={handleApproveJob} onTriggerBatteryEvacuate={handleTriggerBatteryEvacuate} onUpdateMessageMeta={handleUpdateMessageMeta} isMobileChatOpen={isMobileChatOpen} onCloseMobileChat={() => setIsMobileChatOpen(false)}/>)}
 
         {currentTab === 'machines' && <div className="machines-workspace mx-auto h-full w-full max-w-7xl overflow-y-auto px-4 py-6 md:px-6"><AgentWorkbench machine={selectedMachine} onMachineChange={changeMachine} sessions={sessions} onRefresh={loadSessions} onOpenChat={handleOpenDirect}/>
           <details className="host-utilities mt-6 rounded-xl border border-border-subtle bg-canvas-surface/60 p-4 [&>summary]:font-mono [&>summary]:text-xs [&>summary]:uppercase"><summary>Hub hardware & utilities</summary><MachinesView machines={machines} installedApps={installedApps} onLaunchApp={handleLaunchApp} onExecuteTerminal={handleExecuteTerminal} onTriggerBatteryEvacuate={handleTriggerBatteryEvacuate}/></details>

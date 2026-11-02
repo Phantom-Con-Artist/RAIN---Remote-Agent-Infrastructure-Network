@@ -40,6 +40,10 @@ export interface ChatMessage {
   job_delegation?: JobDelegation;
   coworker?: CoworkerEnvelope;
   timestamp: string;
+  is_pinned?: boolean;
+  is_bookmarked?: boolean;
+  bookmark_note?: string;
+  tags?: string[];
 }
 
 export interface Conversation {
@@ -239,5 +243,27 @@ export interface MessageSearchResult {
   snippet: string;
   timestamp: string;
   matched_attachments: string[];
+}
+
+export interface ConversationStats {
+  conversation_id: string;
+  total_messages: number;
+  human_messages: number;
+  agent_messages: number;
+  system_messages: number;
+  pinned_messages: number;
+  bookmarked_messages: number;
+  total_words: number;
+  estimated_tokens: number;
+  attachments_count: number;
+  top_tags: [string, number][];
+  active_participants: string[];
+}
+
+export interface UpdateMessageMetaRequest {
+  is_pinned?: boolean;
+  is_bookmarked?: boolean;
+  bookmark_note?: string;
+  tags?: string[];
 }
 

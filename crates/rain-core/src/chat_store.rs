@@ -1,6 +1,6 @@
 use rain_protocol::{
     AgentSession, ChatAttachment, ChatMessage, Conversation, ConversationExport,
-    ConversationExportFormat, ConversationMode, JobDelegation, JobStatus,
+    ConversationExportFormat, ConversationMode, ConversationStats, JobDelegation, JobStatus,
     MessageDeliveryStatus, MessageSearchResult, SenderType,
 };
 use std::collections::HashMap;
@@ -207,6 +207,7 @@ impl ChatStore {
             job_delegation: None,
             coworker: None,
             timestamp: chrono::Utc::now(),
+            ..Default::default()
         };
 
         {
@@ -276,7 +277,7 @@ impl ChatStore {
             }
             c.last_message = Some("Channel paused by you".into());
             c.last_message_time = Some(chrono::Utc::now());
-            self.messages.write().await.entry(conv_id).or_default().push(ChatMessage{id:uuid::Uuid::new_v4(),conversation_id:conv_id,sender_id:"system".into(),sender_name:"RAIN".into(),sender_type:SenderType::System,text:"Channel paused. Pending channel turns were cancelled; agent sessions remain available for direct chat.".into(),status:MessageDeliveryStatus::Delivered,attachments:vec![],job_delegation:None,coworker:None,timestamp:chrono::Utc::now()});
+            self.messages.write().await.entry(conv_id).or_default().push(ChatMessage{id:uuid::Uuid::new_v4(),conversation_id:conv_id,sender_id:"system".into(),sender_name:"RAIN".into(),sender_type:SenderType::System,text:"Channel paused. Pending channel turns were cancelled; agent sessions remain available for direct chat.".into(),status:MessageDeliveryStatus::Delivered,attachments:vec![],job_delegation:None,coworker:None,timestamp:chrono::Utc::now(),..Default::default()});
             c.clone()
         };
         for member in &conversation.participant_ids {
@@ -398,6 +399,7 @@ impl ChatStore {
             job_delegation: None,
             coworker: None,
             timestamp: chrono::Utc::now(),
+            ..Default::default()
         };
         {
             let _serial = gate.lock().await;
@@ -738,6 +740,7 @@ impl ChatStore {
                 job_delegation: None,
                 coworker: None,
                 timestamp: chrono::Utc::now(),
+                ..Default::default()
             });
             conv.last_message = Some(text.clone());
             conv.last_message_time = Some(chrono::Utc::now());
@@ -906,6 +909,7 @@ impl ChatStore {
             job_delegation: Some(job.clone()),
             coworker: None,
             timestamp: chrono::Utc::now(),
+            ..Default::default()
         };
 
         {
@@ -929,6 +933,7 @@ impl ChatStore {
             job_delegation: Some(job),
             coworker: None,
             timestamp: chrono::Utc::now(),
+            ..Default::default()
         };
 
         {
@@ -1156,6 +1161,155 @@ impl ChatStore {
             results.truncate(lim);
         }
         results
+    }
+
+    pub async fn update_message_meta(
+        &self,
+        conv_id: uuid::Uuid,
+        msg_id: uuid::Uuid,
+        is_pinned: Option<bool>,
+        is_bookmarked: Option<bool>,
+        bookmark_note: Option<String>,
+        tags: Option<Vec<String>>,
+    ) -> Result<ChatMessage, String> {
+        let mut messages_map = self.messages.write().await;
+        let list = messages_map
+            .get_mut(&conv_id)
+            .ok_or_else(|| format!("Conversation {conv_id} not found"))?;
+
+        let msg = list
+            .iter_mut()
+            .find(|m| m.id == msg_id)
+            .ok_or_else(|| format!("Message {msg_id} not found in conversation {conv_id}"))?;
+
+        if let Some(pinned) = is_pinned {
+            msg.is_pinned = pinned;
+        }
+        if let Some(bookmarked) = is_bookmarked {
+            msg.is_bookmarked = bookmarked;
+            if !bookmarked && bookmark_note.is_none() {
+                msg.bookmark_note = None;
+            }
+        }
+        if let Some(note) = bookmark_note {
+            let trimmed = note.trim();
+            if trimmed.is_empty() {
+                msg.bookmark_note = None;
+            } else {
+                msg.bookmark_note = Some(trimmed.to_string());
+                msg.is_bookmarked = true;
+            }
+        }
+        if let Some(new_tags) = tags {
+            let mut cleaned: Vec<String> = new_tags
+                .into_iter()
+                .map(|t| t.trim().to_lowercase())
+                .filter(|t| !t.is_empty())
+                .collect();
+            cleaned.sort();
+            cleaned.dedup();
+            msg.tags = cleaned;
+        }
+
+        Ok(msg.clone())
+    }
+
+    pub async fn get_pinned_messages(&self, conv_id: uuid::Uuid) -> Vec<ChatMessage> {
+        let messages_map = self.messages.read().await;
+        if let Some(list) = messages_map.get(&conv_id) {
+            let mut pinned: Vec<ChatMessage> = list.iter().filter(|m| m.is_pinned).cloned().collect();
+            pinned.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+            pinned
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub async fn get_bookmarked_messages(&self, conv_id: Option<uuid::Uuid>) -> Vec<ChatMessage> {
+        let messages_map = self.messages.read().await;
+        let mut bookmarked = Vec::new();
+        for (cid, list) in messages_map.iter() {
+            if let Some(target) = conv_id {
+                if *cid != target {
+                    continue;
+                }
+            }
+            for msg in list {
+                if msg.is_bookmarked {
+                    bookmarked.push(msg.clone());
+                }
+            }
+        }
+        bookmarked.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        bookmarked
+    }
+
+    pub async fn get_conversation_stats(&self, conv_id: uuid::Uuid) -> Result<ConversationStats, String> {
+        let messages_map = self.messages.read().await;
+        let list = messages_map
+            .get(&conv_id)
+            .ok_or_else(|| format!("Conversation {conv_id} not found"))?;
+
+        let total_messages = list.len();
+        let mut human_messages = 0;
+        let mut agent_messages = 0;
+        let mut system_messages = 0;
+        let mut pinned_messages = 0;
+        let mut bookmarked_messages = 0;
+        let mut total_words = 0;
+        let mut attachments_count = 0;
+        let mut tag_counts: HashMap<String, usize> = HashMap::new();
+        let mut participants: Vec<String> = Vec::new();
+
+        for msg in list {
+            match msg.sender_type {
+                SenderType::Human => human_messages += 1,
+                SenderType::Agent => agent_messages += 1,
+                SenderType::System => system_messages += 1,
+            }
+            if msg.is_pinned {
+                pinned_messages += 1;
+            }
+            if msg.is_bookmarked {
+                bookmarked_messages += 1;
+            }
+            let words = msg.text.split_whitespace().count();
+            total_words += words;
+            attachments_count += msg.attachments.len();
+
+            for tag in &msg.tags {
+                *tag_counts.entry(tag.clone()).or_insert(0) += 1;
+            }
+
+            let participant = if !msg.sender_name.is_empty() {
+                msg.sender_name.clone()
+            } else {
+                msg.sender_id.clone()
+            };
+            if !participants.contains(&participant) {
+                participants.push(participant);
+            }
+        }
+
+        let mut top_tags: Vec<(String, usize)> = tag_counts.into_iter().collect();
+        top_tags.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+        let estimated_tokens = (total_words * 4 / 3) + (attachments_count * 100);
+
+        Ok(ConversationStats {
+            conversation_id: conv_id,
+            total_messages,
+            human_messages,
+            agent_messages,
+            system_messages,
+            pinned_messages,
+            bookmarked_messages,
+            total_words,
+            estimated_tokens,
+            attachments_count,
+            top_tags,
+            active_participants: participants,
+        })
     }
 }
 

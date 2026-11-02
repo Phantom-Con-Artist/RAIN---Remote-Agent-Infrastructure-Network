@@ -313,6 +313,7 @@ impl ChatStore {
             job_delegation: None,
             coworker: None,
             timestamp: now,
+            ..Default::default()
         };
         let response = ChatMessage {
             id: Uuid::new_v4(),
@@ -326,6 +327,7 @@ impl ChatStore {
             job_delegation: None,
             coworker: None,
             timestamp: now,
+            ..Default::default()
         };
         let mut conversations = self.conversations.write().await;
         if let Some(c) = conversations.get_mut(&id) {

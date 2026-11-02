@@ -202,6 +202,7 @@ kind: discuss, plan, handoff, human_input, complete. Use to only for peers that 
                 job_delegation: None,
                 coworker: None,
                 timestamp: chrono::Utc::now(),
+                ..Default::default()
             });
     }
 
@@ -360,6 +361,7 @@ kind: discuss, plan, handoff, human_input, complete. Use to only for peers that 
                         job_delegation: None,
                         coworker: None,
                         timestamp: chrono::Utc::now(),
+                        ..Default::default()
                     });
             }
         }
@@ -567,6 +569,7 @@ kind: discuss, plan, handoff, human_input, complete. Use to only for peers that 
                     job_delegation: None,
                     coworker: Some(envelope.clone()),
                     timestamp: chrono::Utc::now(),
+                    ..Default::default()
                 });
         }
         if envelope.kind == CoworkerKind::HumanInput {

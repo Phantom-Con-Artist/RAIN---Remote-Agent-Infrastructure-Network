@@ -76,6 +76,7 @@ impl ChatStore {
                     job_delegation: None,
                     coworker: None,
                     timestamp: chrono::Utc::now(),
+                    ..Default::default()
                 });
             Ok::<_, String>(())
         }
