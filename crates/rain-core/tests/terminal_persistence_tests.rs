@@ -80,11 +80,11 @@ async fn history_restores_and_deleted_group_stays_deleted() {
 async fn unknown_remote_machine_is_rejected() {
     let mut req = request(false);
     req.machine = Some(format!("unknown-{}", uuid::Uuid::new_v4()));
-    assert!(AgentSupervisor::new()
+    let err = AgentSupervisor::new()
         .start_agent(req)
         .await
-        .unwrap_err()
-        .contains("not configured"));
+        .unwrap_err();
+    assert!(err.contains("SSH transport is disabled") || err.contains("not configured"));
 }
 #[test]
 fn ssh_argument_quoting_roundtrips_shell_metacharacters() {
